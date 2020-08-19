@@ -1,5 +1,5 @@
-#ifndef Z_UTF8_H
-#define Z_UTF8_H
+#ifndef ZSQL_UTF8_H
+#define ZSQL_UTF8_H
 
 #include <stddef.h>
 #include <stdint.h>

@@ -1,5 +1,5 @@
-#ifndef Z_FUZZY_MATCH_H
-#define Z_FUZZY_MATCH_H
+#ifndef ZSQL_FUZZY_MATCH_H
+#define ZSQL_FUZZY_MATCH_H
 
 #include <stddef.h>
 #include <stdint.h>

@@ -1,5 +1,5 @@
-#ifndef Z_SQLH_H
-#define Z_SQLH_H
+#ifndef ZSQL_SQLH_H
+#define ZSQL_SQLH_H
 
 #include <string.h>
 
@@ -16,11 +16,11 @@
        (db), (sql ""), strlen(sql) + 1, (bufsize_or_stmt), NULL))(             \
        sqlite3_prepare_v2((db), (sql), (bufsize_or_stmt), __VA_ARGS__,         \
                           NULL))) == SQLITE_OK                                 \
-       ? Z_OK                                                                  \
-       : Z_ERROR)
+       ? ZSQL_OK                                                               \
+       : ZSQL_ERROR)
 
 #define sqlh_finalize(stmt)                                                    \
-  (sqlite3_finalize((stmt)) == SQLITE_OK ? Z_OK : Z_ERROR)
+  (sqlite3_finalize((stmt)) == SQLITE_OK ? ZSQL_OK : ZSQL_ERROR)
 
 extern int sqlh_exec_impl(sqlite3 *db, const char *sql, int bufsize);
 

@@ -1,7 +1,7 @@
-#ifndef Z_ERRNO_H
-#define Z_ERRNO_H
+#ifndef ZSQL_ERRNO_H
+#define ZSQL_ERRNO_H
 
-#define Z_OK 0
-#define Z_ERROR 1
+#define ZSQL_OK 0
+#define ZSQL_ERROR 1
 
 #endif

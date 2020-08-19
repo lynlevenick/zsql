@@ -50,9 +50,9 @@ static void match_impl(sqlite3_context *context, int argc,
 }
 
 static const char *const cache_dir = "/.cache";
-static const char *const cache_file = "/zc_cache.db";
+static const char *const cache_file = "/zsql.db";
 
-static int z_open(sqlite3 **db) {
+static int zsql_open(sqlite3 **db) {
   const char *base = getenv("XDG_CACHE_HOME");
   int is_home = 0;
 
@@ -62,7 +62,7 @@ static int z_open(sqlite3 **db) {
 
     if (base == NULL) {
       // XDG_CACHE_HOME or HOME must be specified
-      return Z_ERROR;
+      return ZSQL_ERROR;
     }
   }
 
@@ -75,7 +75,7 @@ static int z_open(sqlite3 **db) {
 
   char *path = malloc(path_length);
   if (path == NULL) {
-    return Z_ERROR;
+    return ZSQL_ERROR;
   }
   size_t offset = 0;
 
@@ -98,18 +98,18 @@ static int z_open(sqlite3 **db) {
   free(path);
 
   if (status != SQLITE_OK) {
-    return Z_ERROR;
+    return ZSQL_ERROR;
   }
 
   sqlite3_create_function(
       *db, "match", 3, SQLITE_UTF8 | SQLITE_DETERMINISTIC | SQLITE_DIRECTONLY,
       NULL, match_impl, NULL, NULL);
 
-  return Z_OK;
+  return ZSQL_OK;
 }
 
-static int z_match(sqlite3 *db, const char *search) {
-  int result = Z_OK;
+static int zsql_match(sqlite3 *db, const char *search) {
+  int result = ZSQL_OK;
 
   uint32_t runes_short[64];
   uint32_t *runes;
@@ -120,7 +120,7 @@ static int z_match(sqlite3 *db, const char *search) {
   if (runes_allocated) {
     runes = malloc(runes_bytes);
     if (runes == NULL) {
-      result = Z_ERROR;
+      result = ZSQL_ERROR;
       goto exit;
     }
   } else {
@@ -132,8 +132,8 @@ static int z_match(sqlite3 *db, const char *search) {
   if (sqlh_prepare(db,
                    "CREATE TEMP TABLE vdirs AS "
                    "SELECT dir,match(dir,frecency,?1)quality FROM dirs",
-                   &stmt) != Z_OK) {
-    result = Z_ERROR;
+                   &stmt) != ZSQL_OK) {
+    result = ZSQL_ERROR;
     sqlh_finalize(stmt);
     goto exit;
   }
@@ -141,31 +141,31 @@ static int z_match(sqlite3 *db, const char *search) {
   const size_t runes_length = utf8_to_utf32(runes, search, search_length);
   query_t query = {.length = runes_length, .runes = runes};
   if (sqlite3_bind_pointer(stmt, 1, &query, "", NULL) != SQLITE_OK) {
-    result = Z_ERROR;
+    result = ZSQL_ERROR;
     goto cleanup_sql;
   }
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
-    result = Z_ERROR;
+    result = ZSQL_ERROR;
     goto cleanup_sql;
   }
 
-  if (sqlh_finalize(stmt) != Z_OK) {
-    result = Z_ERROR;
+  if (sqlh_finalize(stmt) != ZSQL_OK) {
+    result = ZSQL_ERROR;
     goto cleanup_mem;
   }
 
   if (sqlh_prepare(db,
                    "SELECT dir FROM vdirs WHERE quality>=0 "
                    "ORDER BY quality DESC",
-                   &stmt) != Z_OK) {
-    result = Z_ERROR;
+                   &stmt) != ZSQL_OK) {
+    result = ZSQL_ERROR;
     goto cleanup_mem;
   }
 
   if (sqlite3_step(stmt) != SQLITE_ROW) {
     printf("no result\n");
-    result = Z_ERROR;
+    result = ZSQL_ERROR;
     goto cleanup_sql;
   }
 
@@ -181,7 +181,7 @@ static int z_match(sqlite3 *db, const char *search) {
   if (str_allocated) {
     str = malloc(result_bytes);
     if (str == NULL) {
-      result = Z_ERROR;
+      result = ZSQL_ERROR;
       goto cleanup_sql;
     }
   } else {
@@ -198,11 +198,11 @@ static int z_match(sqlite3 *db, const char *search) {
   }
 
 cleanup_sql:
-  if (sqlh_finalize(stmt) != Z_OK) {
-    result = Z_ERROR;
+  if (sqlh_finalize(stmt) != ZSQL_OK) {
+    result = ZSQL_ERROR;
   }
-  if (sqlh_exec(db, "DROP TABLE vdirs") != Z_OK) {
-    result = Z_ERROR;
+  if (sqlh_exec(db, "DROP TABLE vdirs") != ZSQL_OK) {
+    result = ZSQL_ERROR;
   }
 cleanup_mem:
   if (runes_allocated) {
@@ -221,11 +221,11 @@ int main(int argc, char **argv) {
   }
 
   sqlite3 *db;
-  if (z_open(&db) != Z_OK) {
+  if (zsql_open(&db) != ZSQL_OK) {
     result = 1;
     goto exit;
   }
-  if (z_migrate(db) != Z_OK) {
+  if (zsql_migrate(db) != ZSQL_OK) {
     result = 1;
     goto cleanup;
   }
@@ -238,7 +238,7 @@ int main(int argc, char **argv) {
     goto cleanup;
   }
 
-  if (z_match(db, ARGV[1]) != Z_OK) {
+  if (zsql_match(db, ARGV[1]) != ZSQL_OK) {
     result = 1;
     goto cleanup;
   }

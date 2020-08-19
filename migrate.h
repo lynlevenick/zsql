@@ -1,8 +1,8 @@
-#ifndef Z_MIGRATE_H
-#define Z_MIGRATE_H
+#ifndef ZSQL_MIGRATE_H
+#define ZSQL_MIGRATE_H
 
 #include "sqlite3.h"
 
-extern int z_migrate(sqlite3 *db);
+extern int zsql_migrate(sqlite3 *db);
 
 #endif

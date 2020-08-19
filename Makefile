@@ -10,14 +10,14 @@ CFLAGS = -Wall -Wextra --std=c11 -Og -fsanitize=undefined -fsanitize-trap=undefi
 LDFLAGS = # -flto
 DEPFLAGS = -MT $@ -MMD -MP -MF $*.d
 
-PACKAGE = z.c
+PACKAGE = zsql
 VERSION = 1.0.0
 
 # Files
 
-C = args.c fuzzy_match.c migrate.c sqlh.c sqlite3.c utf8.c z.c
-DOC =
-EXECUTABLE = z
+C = args.c fuzzy_match.c migrate.c sqlh.c sqlite3.c utf8.c zsql.c
+DOC = zsql.1
+EXECUTABLE = zsql
 MAKEFILE = Makefile
 
 # Targets

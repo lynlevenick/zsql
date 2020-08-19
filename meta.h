@@ -1,5 +1,5 @@
-#ifndef Z_META_H
-#define Z_META_H
+#ifndef ZSQL_META_H
+#define ZSQL_META_H
 
 #define META__CONCAT2(_0, _1) _0##_1
 #define META_CONCAT2(_0, _1) META__CONCAT2(_0, _1)
