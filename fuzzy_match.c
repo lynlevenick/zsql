@@ -4,22 +4,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define mem_uint32_t(haystack, haystack_length, needle)                        \
-  _Generic((*haystack), uint32_t                                               \
-           : ((uint32_t *)mem_uint32_t__impl((haystack), (haystack_length),    \
-                                             (needle))),                       \
-             default                                                           \
-           : mem_uint32_t__impl((haystack), (haystack_length), (needle)))
-
-static inline const uint32_t *mem_uint32_t__impl(const uint32_t *haystack,
-                                                 size_t haystack_length,
-                                                 uint32_t needle) {
+static inline const uint32_t *mem_uint32_t(const uint32_t *haystack,
+                                           size_t haystack_length,
+                                           uint32_t needle) {
   while (haystack_length-- > 0) {
     if (*haystack == needle) {
       return haystack;
     }
 
-    haystack += 1;
+    ++haystack;
   }
 
   return NULL;
@@ -27,7 +20,7 @@ static inline const uint32_t *mem_uint32_t__impl(const uint32_t *haystack,
 
 int fuzzy_match(const uint32_t *haystack, size_t haystack_length,
                 const uint32_t *needle, size_t needle_length) {
-  if (needle_length <= 0) {
+  if (needle_length == 0) {
     // zero length needle matches all haystacks equally well
     return 0;
   }
@@ -40,7 +33,8 @@ int fuzzy_match(const uint32_t *haystack, size_t haystack_length,
   }
 
   size_t needle_idx = 0;
-  for (size_t haystack_idx = needle_in_haystack - haystack;
+  for (size_t haystack_idx =
+           (uintptr_t)needle_in_haystack - (uintptr_t)haystack;
        haystack_idx < haystack_length; ++haystack_idx) {
     // todo: compute bonuses based on word boundary etc?
 

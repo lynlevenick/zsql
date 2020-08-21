@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,7 +14,7 @@
 #include "utf8.h"
 
 typedef struct {
-  size_t length;
+  const size_t length;
   const uint32_t *runes;
 } query_t;
 
@@ -35,7 +36,8 @@ static void match_impl(sqlite3_context *context, int argc,
   }
 #endif
 
-  const size_t dir_length = sqlite3_value_bytes(argv[0]) / sizeof(uint32_t);
+  const size_t dir_length =
+      (size_t)sqlite3_value_bytes(argv[0]) / sizeof(uint32_t);
   // should be aligned since sqlite requires memory allocations to have
   // at least 4 byte alignment
   const uint32_t *dir = sqlite3_value_blob(argv[0]);
@@ -49,16 +51,41 @@ static void match_impl(sqlite3_context *context, int argc,
                          frecency);
 }
 
-static const char *const cache_dir = "/.cache";
+static const char *const cache_dir =
+#ifdef _WIN32
+    "/zsql";
+#else
+    "/.cache";
+#endif
 static const char *const cache_file = "/zsql.db";
 
+static const char *const cache_env =
+#ifdef _WIN32
+    "LocalAppData";
+#else
+    "XDG_CACHE_HOME";
+#endif
+static const char *const cache_fallback_env =
+#ifdef _WIN32
+    "AppData";
+#else
+    "HOME";
+#endif
+
+static const int force_cache_dir =
+#ifdef _WIN32
+    1;
+#else
+    0;
+#endif
+
 static int zsql_open(sqlite3 **db) {
-  const char *base = getenv("XDG_CACHE_HOME");
-  int is_home = 0;
+  const char *base = getenv(cache_env);
+  unsigned int is_home = 0;
 
   if (base == NULL) {
     is_home = 1;
-    base = getenv("HOME");
+    base = getenv(cache_fallback_env);
 
     if (base == NULL) {
       // XDG_CACHE_HOME or HOME must be specified
@@ -66,36 +93,46 @@ static int zsql_open(sqlite3 **db) {
     }
   }
 
-  const size_t base_chars = sizeof(*base) * strlen(base);
-  const size_t cache_dir_chars = sizeof(*cache_dir) * strlen(cache_dir);
-  const size_t cache_file_chars = sizeof(*cache_file) * strlen(cache_file);
-  const size_t null_chars = sizeof(char) * 1;
-  const size_t path_length =
-      base_chars + is_home * cache_dir_chars + cache_file_chars + null_chars;
+  const size_t base_bytes = sizeof(*base) * strlen(base);
+  const size_t cache_dir_bytes = sizeof(*cache_dir) * strlen(cache_dir);
+  const size_t cache_file_bytes = sizeof(*cache_file) * strlen(cache_file);
+  const size_t null_bytes = sizeof(char) * 1;
+  const size_t path_bytes = base_bytes +
+                            (force_cache_dir || is_home) * cache_dir_bytes +
+                            cache_file_bytes + null_bytes;
 
-  char *path = malloc(path_length);
-  if (path == NULL) {
-    return ZSQL_ERROR;
+  char path_short[256];
+  char *path = path_short;
+
+  const int path_allocated = path_bytes > sizeof(path_short);
+  if (path_allocated) {
+    path = malloc(path_bytes);
+    if (path == NULL) {
+      return ZSQL_ERROR;
+    }
   }
+
   size_t offset = 0;
 
-  memcpy(path + offset, base, base_chars);
-  offset += base_chars;
+  memcpy(path + offset, base, base_bytes);
+  offset += base_bytes;
 
-  if (is_home) {
-    memcpy(path + offset, cache_dir, cache_dir_chars);
-    offset += cache_dir_chars;
+  if (force_cache_dir || is_home) {
+    memcpy(path + offset, cache_dir, cache_dir_bytes);
+    offset += cache_dir_bytes;
   }
 
-  memcpy(path + offset, cache_file, cache_file_chars);
-  offset += cache_file_chars;
+  memcpy(path + offset, cache_file, cache_file_bytes);
+  offset += cache_file_bytes;
 
   path[offset] = 0;
 
   const int status = sqlite3_open_v2(
       path, db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 
-  free(path);
+  if (path_allocated) {
+    free(path);
+  }
 
   if (status != SQLITE_OK) {
     return ZSQL_ERROR;
@@ -116,26 +153,26 @@ static int zsql_match(sqlite3 *db, const char *search) {
   const size_t search_length = strlen(search);
   size_t runes_bytes = search_length * sizeof(*runes);
 
-  int runes_allocated = runes_bytes > sizeof(runes_short);
-  if (runes_allocated) {
+  const int runes_allocated = runes_bytes > sizeof(runes_short);
+  if (!runes_allocated) {
+    runes = runes_short;
+    runes_bytes = sizeof(runes_short);
+  } else {
     runes = malloc(runes_bytes);
     if (runes == NULL) {
       result = ZSQL_ERROR;
       goto exit;
     }
-  } else {
-    runes = runes_short;
-    runes_bytes = sizeof(runes_short);
   }
 
   sqlite3_stmt *stmt;
-  if (sqlh_prepare(db,
-                   "CREATE TEMP TABLE vdirs AS "
-                   "SELECT dir,match(dir,frecency,?1)quality FROM dirs",
-                   &stmt) != ZSQL_OK) {
+  if (sqlh_prepare_static(
+          db,
+          "SELECT dir FROM dirs WHERE match(dir,frecency,?1)>=0 "
+          "ORDER BY match(dir,frecency,?1) DESC",
+          &stmt) != ZSQL_OK) {
     result = ZSQL_ERROR;
-    sqlh_finalize(stmt);
-    goto exit;
+    goto cleanup_mem;
   }
 
   const size_t runes_length = utf8_to_utf32(runes, search, search_length);
@@ -143,24 +180,6 @@ static int zsql_match(sqlite3 *db, const char *search) {
   if (sqlite3_bind_pointer(stmt, 1, &query, "", NULL) != SQLITE_OK) {
     result = ZSQL_ERROR;
     goto cleanup_sql;
-  }
-
-  if (sqlite3_step(stmt) != SQLITE_DONE) {
-    result = ZSQL_ERROR;
-    goto cleanup_sql;
-  }
-
-  if (sqlh_finalize(stmt) != ZSQL_OK) {
-    result = ZSQL_ERROR;
-    goto cleanup_mem;
-  }
-
-  if (sqlh_prepare(db,
-                   "SELECT dir FROM vdirs WHERE quality>=0 "
-                   "ORDER BY quality DESC",
-                   &stmt) != ZSQL_OK) {
-    result = ZSQL_ERROR;
-    goto cleanup_mem;
   }
 
   if (sqlite3_step(stmt) != SQLITE_ROW) {
@@ -171,21 +190,19 @@ static int zsql_match(sqlite3 *db, const char *search) {
 
   // we need as many bytes in the char* as there are bytes in runes because
   // each character in the uint32_t may expand into 4 utf-8 bytes
-  const size_t result_bytes = sqlite3_column_bytes(stmt, 0);
+  const size_t result_bytes = (size_t)sqlite3_column_bytes(stmt, 0);
   // should be aligned since sqlite requires memory allocations to have
   // at least 4 byte alignment
   const uint32_t *result_runes = sqlite3_column_blob(stmt, 0);
-  char *str;
+  char *str = (char *)runes;
 
-  int str_allocated = result_bytes > runes_bytes;
+  const int str_allocated = result_bytes > runes_bytes;
   if (str_allocated) {
     str = malloc(result_bytes);
     if (str == NULL) {
       result = ZSQL_ERROR;
       goto cleanup_sql;
     }
-  } else {
-    str = (char *)runes;
   }
 
   const size_t written =
@@ -201,9 +218,6 @@ cleanup_sql:
   if (sqlh_finalize(stmt) != ZSQL_OK) {
     result = ZSQL_ERROR;
   }
-  if (sqlh_exec(db, "DROP TABLE vdirs") != ZSQL_OK) {
-    result = ZSQL_ERROR;
-  }
 cleanup_mem:
   if (runes_allocated) {
     free(runes);
@@ -215,15 +229,23 @@ exit:
 int main(int argc, char **argv) {
   int result = 0;
 
-  if (argc >= 1) {
-    ARGC = argc;
-    ARGV = (const char *const *)argv;
+  ARGC = argc;
+  ARGV = (const char *const *)argv;
+
+  if (sqlite3_initialize() != SQLITE_OK) {
+    result = 1;
+    goto exit;
   }
 
   sqlite3 *db;
   if (zsql_open(&db) != ZSQL_OK) {
     result = 1;
     goto exit;
+  }
+
+  if (sqlite3_busy_timeout(db, 128) != SQLITE_OK) {
+    result = 1;
+    goto cleanup;
   }
   if (zsql_migrate(db) != ZSQL_OK) {
     result = 1;

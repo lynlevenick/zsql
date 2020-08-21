@@ -19,13 +19,12 @@ static const uint32_t invalid_bit = 0x70000000;
 size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t len) {
   const uint8_t *data = (const uint8_t *)str;
   size_t data_pos = 0;
-  size_t next_data_pos = 0;
 
   size_t rune_pos = 0;
 
   while (data_pos < len) {
     // check if the next 16 bytes are ascii
-    next_data_pos = data_pos + 16;
+    size_t next_data_pos = data_pos + 16;
     if (likely(next_data_pos <= len)) {
       // if it is safe to read 16 more bytes, check that they are ascii
       uint64_t v1;
@@ -42,8 +41,8 @@ size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t len) {
       }
     }
 
-    uint8_t byte = data[data_pos];
-    if (likely(byte < 0b10000000)) {
+    const uint8_t byte = data[data_pos];
+    if (likely(byte < 0x80)) {
       runes[rune_pos++] = byte;
       ++data_pos;
       continue;
@@ -51,61 +50,62 @@ size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t len) {
 
     uint32_t rune;
 
-    if ((byte & 0b11100000) == 0b11000000) {
+    if ((byte & 0xe0) == 0xc0) {
       next_data_pos = data_pos + 2;
       if (unlikely(next_data_pos > len)) {
         // non-utf8 sequence: multi-byte sequence at end
         goto copy1;
       }
-      if (unlikely((data[data_pos + 1] & 0b11000000) != 0b10000000)) {
+      if (unlikely((data[data_pos + 1] & 0xc0) != 0x80)) {
         // non-utf8 sequence: multi-byte beginning followed by non-continuation
         goto copy2;
       }
       // range check
-      rune = (byte & 0b00011111) << 6 | (data[data_pos + 1] & 0b00111111);
+      rune =
+          ((uint32_t)byte & 0x1f) << 6 | ((uint32_t)data[data_pos + 1] & 0x3f);
 
       if (unlikely(rune < 0x80 || 0x7ff < rune)) {
         // non-utf8 sequence: invalid multi-byte sequence
         goto copy2;
       }
-    } else if ((byte & 0b11110000) == 0b11100000) {
+    } else if ((byte & 0xf0) == 0xe0) {
       next_data_pos = data_pos + 3;
       if (unlikely(next_data_pos > len)) {
         // non-utf8 sequence: multi-byte sequence at end
         goto copy_loop;
       }
-      if (unlikely((data[data_pos + 1] & 0b11000000) != 0b10000000 ||
-                   (data[data_pos + 2] & 0b11000000) != 0b10000000)) {
+      if (unlikely((data[data_pos + 1] & 0xc0) != 0x80 ||
+                   (data[data_pos + 2] & 0xc0) != 0x80)) {
         // non-utf8 sequence: multi-byte beginning followed by non-continuation
         goto copy3;
       }
       // range check
-      rune = (byte & 0b00001111) << 12 |
-             (data[data_pos + 1] & 0b00111111) << 6 |
-             (data[data_pos + 2] & 0b00111111);
+      rune = ((uint32_t)byte & 0x0f) << 12 |
+             ((uint32_t)data[data_pos + 1] & 0x3f) << 6 |
+             ((uint32_t)data[data_pos + 2] & 0x3f);
 
       if (unlikely(rune < 0x800 || 0xffff < rune ||
                    (0xd7ff < rune && rune < 0xe000))) {
         // non-utf8 sequence: invalid multi-byte sequence
         goto copy3;
       }
-    } else if ((byte & 0b11111000) == 0b11110000) {
+    } else if ((byte & 0xf8) == 0xf0) {
       next_data_pos = data_pos + 4;
       if (unlikely(next_data_pos > len)) {
         // non-utf8 sequence: multi-byte sequence at end
         goto copy_loop;
       }
-      if (unlikely((data[data_pos + 1] & 0b11000000) != 0b10000000 ||
-                   (data[data_pos + 2] & 0b11000000) != 0b10000000 ||
-                   (data[data_pos + 3] & 0b11000000) != 0b10000000)) {
+      if (unlikely((data[data_pos + 1] & 0xc0) != 0x80 ||
+                   (data[data_pos + 2] & 0xc0) != 0x80 ||
+                   (data[data_pos + 3] & 0xc0) != 0x80)) {
         // non-utf8 sequence: multi-byte beginning followed by non-continuation
         goto copy4;
       }
       // range check
-      rune = (byte & 0b00000111) << 18 |
-             (data[data_pos + 1] & 0b00111111) << 12 |
-             (data[data_pos + 2] & 0b00111111) << 6 |
-             (data[data_pos + 3] & 0b00111111);
+      rune = ((uint32_t)byte & 0x07) << 18 |
+             ((uint32_t)data[data_pos + 1] & 0x3f) << 12 |
+             ((uint32_t)data[data_pos + 2] & 0x3f) << 6 |
+             ((uint32_t)data[data_pos + 3] & 0x3f);
 
       if (unlikely(rune < 0xffff || 0x10ffff < rune)) {
         // non-utf8 sequence: invalid multi-byte sequence
@@ -178,21 +178,22 @@ size_t utf32_to_utf8(char *restrict str, const uint32_t *runes, size_t len) {
       }
     }
 
-    uint32_t rune = runes[rune_pos++];
-    if (likely(rune < 0b10000000)) {
+    const uint32_t rune = runes[rune_pos++];
+    // NOLINTNEXTLINE(bugprone-branch-clone) intentionally same as non-utf8 path
+    if (likely(rune < 0x80)) {
       data[data_pos++] = (uint8_t)(rune & 0xff);
     } else if (rune < 0x800) {
-      data[data_pos++] = 0b11000000 | (uint8_t)((rune >> 6) & 0xff);
-      data[data_pos++] = 0b10000000 | (uint8_t)(rune & 0x3f);
+      data[data_pos++] = 0xc0 | (uint8_t)((rune >> 6) & 0xff);
+      data[data_pos++] = 0x80 | (uint8_t)(rune & 0x3f);
     } else if (rune < 0x10000) {
-      data[data_pos++] = 0b11100000 | (uint8_t)((rune >> 12) & 0xff);
-      data[data_pos++] = 0b10000000 | (uint8_t)((rune >> 6) & 0x3f);
-      data[data_pos++] = 0b10000000 | (uint8_t)(rune & 0x3f);
+      data[data_pos++] = 0xe0 | (uint8_t)((rune >> 12) & 0xff);
+      data[data_pos++] = 0x80 | (uint8_t)((rune >> 6) & 0x3f);
+      data[data_pos++] = 0x80 | (uint8_t)(rune & 0x3f);
     } else if (rune < 0x110000) {
-      data[data_pos++] = 0b11110000 | (uint8_t)((rune >> 18) & 0xff);
-      data[data_pos++] = 0b10000000 | (uint8_t)((rune >> 12) & 0x3f);
-      data[data_pos++] = 0b10000000 | (uint8_t)((rune >> 6) & 0x3f);
-      data[data_pos++] = 0b10000000 | (uint8_t)(rune & 0x3f);
+      data[data_pos++] = 0xf0 | (uint8_t)((rune >> 18) & 0xff);
+      data[data_pos++] = 0x80 | (uint8_t)((rune >> 12) & 0x3f);
+      data[data_pos++] = 0x80 | (uint8_t)((rune >> 6) & 0x3f);
+      data[data_pos++] = 0x80 | (uint8_t)(rune & 0x3f);
     } else {
       // source is a non-utf8 sequence, write back the truncation literally
       data[data_pos++] = (uint8_t)(rune & 0xff);

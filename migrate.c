@@ -9,14 +9,16 @@
 #include "sqlite3.h"
 
 static const char *const *const migrations[] = {(const char *const[]){
-    "CREATE TABLE dirs(dir BLOB NOT NULL,frecency INT NOT NULL DEFAULT 1)",
-    "CREATE UNIQUE INDEX index_by_dir ON dirs(dir)",
+    "CREATE TABLE dirs("
+    "dir BLOB NOT NULL UNIQUE CHECK (length(dir)%4==0),"
+    "frecency INT NOT NULL DEFAULT 1)",
+
     "CREATE INDEX index_by_frecency_and_dir ON dirs(frecency, dir)",
-    "CREATE TABLE meta(key TEXT,value NUMERIC)",
-    "CREATE UNIQUE INDEX index_by_key ON meta(key)",
+
+    "CREATE TABLE meta(key TEXT NOT NULL UNIQUE,value NUMERIC NOT NULL)",
 
     "CREATE TRIGGER trigger_on_update_forget "
-    "AFTER UPDATE OF frecency ON dirs "
+    "AFTER UPDATE ON dirs "
     "WHEN(SELECT SUM(frecency)FROM dirs)>=5000 "
     "BEGIN "
     "UPDATE dirs SET frecency=CAST(frecency*0.9 AS INT);"
@@ -29,7 +31,7 @@ static int current_schema_version(sqlite3 *db, int *schema_version) {
   int result = ZSQL_OK;
 
   sqlite3_stmt *stmt;
-  if (sqlh_prepare(db, "PRAGMA user_version", &stmt) != ZSQL_OK) {
+  if (sqlh_prepare_static(db, "PRAGMA user_version", &stmt) != ZSQL_OK) {
     result = ZSQL_ERROR;
     goto exit;
   }
@@ -50,8 +52,10 @@ exit:
 }
 
 static int set_schema_version(sqlite3 *db, int schema_version) {
+  // 20 chars for pragma, 10 chars for positive schema version, 1 char null
   char buffer[31];
-  int buffer_length = sprintf(buffer, "PRAGMA user_version=%d", schema_version);
+  const int buffer_length =
+      sprintf(buffer, "PRAGMA user_version=%d", schema_version);
   if (sqlh_exec(db, buffer, buffer_length + 1) != ZSQL_OK) {
     return ZSQL_ERROR;
   }
@@ -71,13 +75,14 @@ static int current_schema_little_endian(sqlite3 *db,
   int result = ZSQL_OK;
 
   sqlite3_stmt *stmt;
-  if (sqlh_prepare(db, "SELECT value FROM meta WHERE key='little_endian'",
-                   &stmt) != ZSQL_OK) {
+  if (sqlh_prepare_static(db,
+                          "SELECT value FROM meta WHERE key='little_endian'",
+                          &stmt) != ZSQL_OK) {
     result = ZSQL_ERROR;
     goto exit;
   }
 
-  int status = sqlite3_step(stmt);
+  const int status = sqlite3_step(stmt);
   if (status == SQLITE_DONE) {
     *schema_little_endian = -1;
   } else if (status == SQLITE_ROW) {
@@ -99,10 +104,11 @@ static int set_schema_little_endian(sqlite3 *db, int schema_little_endian) {
   int result = ZSQL_OK;
 
   sqlite3_stmt *stmt;
-  if (sqlh_prepare(db,
-                   "INSERT INTO meta(key,value)VALUES('little_endian',?1)"
-                   "ON CONFLICT(key)DO UPDATE SET value=excluded.value",
-                   &stmt) != ZSQL_OK) {
+  if (sqlh_prepare_static(
+          db,
+          "INSERT INTO meta(key,value)VALUES('little_endian',?1)"
+          "ON CONFLICT(key)DO UPDATE SET value=excluded.value",
+          &stmt) != ZSQL_OK) {
     result = ZSQL_ERROR;
     goto exit;
   }
@@ -144,7 +150,7 @@ int zsql_migrate(sqlite3 *db) {
   }
 
   if (schema_version < SCHEMA_VERSION) {
-    if (sqlh_exec(db, "BEGIN EXCLUSIVE") != ZSQL_OK) {
+    if (sqlh_exec_static(db, "BEGIN EXCLUSIVE") != ZSQL_OK) {
       return ZSQL_ERROR;
     }
 
@@ -172,7 +178,7 @@ int zsql_migrate(sqlite3 *db) {
       }
     }
 
-    if (sqlh_exec(db, "COMMIT") != ZSQL_OK) {
+    if (sqlh_exec_static(db, "COMMIT") != ZSQL_OK) {
       goto rollback;
     }
   }
@@ -187,7 +193,7 @@ int zsql_migrate(sqlite3 *db) {
   }
 
   if (schema_little_endian != system_little_endian) {
-    if (sqlh_exec(db, "BEGIN EXCLUSIVE") != ZSQL_OK) {
+    if (sqlh_exec_static(db, "BEGIN EXCLUSIVE") != ZSQL_OK) {
       return ZSQL_ERROR;
     }
 
@@ -203,7 +209,7 @@ int zsql_migrate(sqlite3 *db) {
       }
     }
 
-    if (sqlh_exec(db, "COMMIT") != ZSQL_OK) {
+    if (sqlh_exec_static(db, "COMMIT") != ZSQL_OK) {
       goto rollback;
     }
   }
@@ -215,7 +221,7 @@ rollback:
   // disabled. if it does (return is zero), then the transaction is still
   // happening and a rollback should be performed
   if (!sqlite3_get_autocommit(db)) {
-    if (sqlh_exec(db, "ROLLBACK") != ZSQL_OK) {
+    if (sqlh_exec_static(db, "ROLLBACK") != ZSQL_OK) {
       // fixme: error while trying to rollback? how could one recover from
       // this state?
     }

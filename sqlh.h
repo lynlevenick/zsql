@@ -3,25 +3,25 @@
 
 #include <string.h>
 
+#include "errno.h"
 #include "meta.h"
 #include "sqlite3.h"
 
-#define sqlh_exec(db, sql, ...)                                                \
-  (META_IF_EMPTY(__VA_ARGS__)(                                                 \
-      sqlh_exec_impl((db), (sql ""), strlen(sql) + 1))(                        \
-      sqlh_exec_impl((db), (sql), __VA_ARGS__)))
+#define sqlh_exec_static(db, sql) (sqlh_exec((db), (sql ""), strlen(sql) + 1))
 
-#define sqlh_prepare(db, sql, bufsize_or_stmt, ...)                            \
-  ((META_IF_EMPTY(__VA_ARGS__)(sqlite3_prepare_v2(                             \
-       (db), (sql ""), strlen(sql) + 1, (bufsize_or_stmt), NULL))(             \
-       sqlite3_prepare_v2((db), (sql), (bufsize_or_stmt), __VA_ARGS__,         \
-                          NULL))) == SQLITE_OK                                 \
+#define sqlh_prepare_static(db, sql, stmt)                                     \
+  (sqlite3_prepare_v2((db), (sql ""), strlen((sql)) + 1, (stmt), NULL) ==      \
+           SQLITE_OK                                                           \
+       ? ZSQL_OK                                                               \
+       : ZSQL_ERROR)
+#define sqlh_prepare(db, sql, len, stmt)                                       \
+  (sqlite3_prepare_v2((db), (sql), (len), (stmt), NULL) == SQLITE_OK           \
        ? ZSQL_OK                                                               \
        : ZSQL_ERROR)
 
 #define sqlh_finalize(stmt)                                                    \
   (sqlite3_finalize((stmt)) == SQLITE_OK ? ZSQL_OK : ZSQL_ERROR)
 
-extern int sqlh_exec_impl(sqlite3 *db, const char *sql, int bufsize);
+extern int sqlh_exec(sqlite3 *db, const char *sql, int bufsize);
 
 #endif
