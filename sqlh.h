@@ -4,7 +4,6 @@
 #include <string.h>
 
 #include "errno.h"
-#include "meta.h"
 #include "sqlite3.h"
 
 #define sqlh_exec_static(db, sql) (sqlh_exec((db), (sql ""), strlen(sql) + 1))

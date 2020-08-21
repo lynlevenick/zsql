@@ -4,10 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "args.h"
 #include "errno.h"
 #include "fuzzy_match.h"
-#include "meta.h"
 #include "migrate.h"
 #include "sqlh.h"
 #include "sqlite3.h"
@@ -184,7 +182,6 @@ static int zsql_match(sqlite3 *db, const char *search) {
 
   if (sqlite3_step(stmt) != SQLITE_ROW) {
     printf("no result\n");
-    result = ZSQL_ERROR;
     goto cleanup_sql;
   }
 
@@ -229,8 +226,16 @@ exit:
 int main(int argc, char **argv) {
   int result = 0;
 
-  ARGC = argc;
-  ARGV = (const char *const *)argv;
+  if (argc < 2) {
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    argv[1] = malloc(1024);
+    fgets(argv[1], 1024, stdin);
+    argc = 2;
+#else
+    result = 1;
+    goto exit;
+#endif
+  }
 
   if (sqlite3_initialize() != SQLITE_OK) {
     result = 1;
@@ -252,15 +257,7 @@ int main(int argc, char **argv) {
     goto cleanup;
   }
 
-  if (ARGC < 2) {
-    /* argv[1] = malloc(1024); */
-    /* fgets(argv[1], 1024, stdin); */
-    /* argc = 2; */
-    result = 1;
-    goto cleanup;
-  }
-
-  if (zsql_match(db, ARGV[1]) != ZSQL_OK) {
+  if (zsql_match(db, argv[1]) != ZSQL_OK) {
     result = 1;
     goto cleanup;
   }
@@ -268,5 +265,10 @@ int main(int argc, char **argv) {
 cleanup:
   sqlite3_close(db);
 exit:
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+  if (result != 0) {
+    abort();
+  }
+#endif
   return result;
 }

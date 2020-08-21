@@ -7,6 +7,7 @@
 
 CC = cc
 CFLAGS = -Wall -Wextra --std=c99 \
+	-fsanitize=undefined -fsanitize-trap=undefined \
 	-DSQLITE_DQS=0 -DSQLITE_THREADSAFE=0 -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_LIKE_DOESNT_MATCH_GLOBS -DSQLITE_MAX_EXPR_DEPTH=0 -DSQLITE_OMIT_DECLTYPE -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_SHARED_CACHE -DSQLITE_USE_ALLOCA -DSQLITE_OMIT_AUTOINIT \
 	-Oz -flto -fmerge-all-constants -fno-asynchronous-unwind-tables -fno-ident -fno-stack-protector -fno-unwind-tables
 LDFLAGS = -flto
@@ -17,10 +18,10 @@ VERSION = 1.0.0
 
 # Files
 
-C = args.c fuzzy_match.c migrate.c sqlh.c sqlite3.c utf8.c zsql.c
-DOC = zsql.1
+C = fuzzy_match.c migrate.c sqlh.c sqlite3.c utf8.c zsql.c
+DOC = z.1
 
-EXECFILE = zsql
+EXECFILE = z
 MAKEFILE = Makefile
 PACKFILE = $(PACKAGE)-$(VERSION).tar
 
