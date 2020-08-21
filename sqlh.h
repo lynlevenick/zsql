@@ -13,8 +13,8 @@
            SQLITE_OK                                                           \
        ? ZSQL_OK                                                               \
        : ZSQL_ERROR)
-#define sqlh_prepare(db, sql, len, stmt)                                       \
-  (sqlite3_prepare_v2((db), (sql), (len), (stmt), NULL) == SQLITE_OK           \
+#define sqlh_prepare(db, sql, length, stmt)                                    \
+  (sqlite3_prepare_v2((db), (sql), (length), (stmt), NULL) == SQLITE_OK        \
        ? ZSQL_OK                                                               \
        : ZSQL_ERROR)
 

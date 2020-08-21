@@ -15,17 +15,17 @@ static const uint32_t invalid_bit = 0x70000000;
 // from any valid utf8 sequence. this is needed to support OS paths,
 // which can contain any byte sequence except null
 // assumes runes is long enough to store the entirety of str's runes,
-// a length of at most len runes. returns the number of extracted runes
-size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t len) {
+// a length of at most length runes. returns the number of extracted runes
+size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t length) {
   const uint8_t *data = (const uint8_t *)str;
   size_t data_pos = 0;
 
   size_t rune_pos = 0;
 
-  while (data_pos < len) {
+  while (data_pos < length) {
     // check if the next 16 bytes are ascii
     size_t next_data_pos = data_pos + 16;
-    if (likely(next_data_pos <= len)) {
+    if (likely(next_data_pos <= length)) {
       // if it is safe to read 16 more bytes, check that they are ascii
       uint64_t v1;
       memcpy(&v1, data + data_pos, sizeof(v1));
@@ -52,7 +52,7 @@ size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t len) {
 
     if ((byte & 0xe0) == 0xc0) {
       next_data_pos = data_pos + 2;
-      if (unlikely(next_data_pos > len)) {
+      if (unlikely(next_data_pos > length)) {
         // non-utf8 sequence: multi-byte sequence at end
         goto copy1;
       }
@@ -70,7 +70,7 @@ size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t len) {
       }
     } else if ((byte & 0xf0) == 0xe0) {
       next_data_pos = data_pos + 3;
-      if (unlikely(next_data_pos > len)) {
+      if (unlikely(next_data_pos > length)) {
         // non-utf8 sequence: multi-byte sequence at end
         goto copy_loop;
       }
@@ -91,7 +91,7 @@ size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t len) {
       }
     } else if ((byte & 0xf8) == 0xf0) {
       next_data_pos = data_pos + 4;
-      if (unlikely(next_data_pos > len)) {
+      if (unlikely(next_data_pos > length)) {
         // non-utf8 sequence: multi-byte sequence at end
         goto copy_loop;
       }
@@ -125,11 +125,11 @@ size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t len) {
   copy_loop:
     runes[rune_pos++] = byte | invalid_bit;
     ++data_pos;
-    if (data_pos >= len) {
+    if (data_pos >= length) {
       break;
     }
     runes[rune_pos++] = data[data_pos++];
-    if (data_pos >= len) {
+    if (data_pos >= length) {
       break;
     }
     runes[rune_pos++] = data[data_pos++];
@@ -149,16 +149,16 @@ size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t len) {
 }
 
 // assumes str is long enough to store runes encoded at utf8, a length
-// of at most 4 * len bytes. returns the number of bytes written into str
-size_t utf32_to_utf8(char *restrict str, const uint32_t *runes, size_t len) {
+// of at most 4 * length bytes. returns the number of bytes written into str
+size_t utf32_to_utf8(char *restrict str, const uint32_t *runes, size_t length) {
   size_t rune_pos = 0;
 
   uint8_t *data = (uint8_t *)str;
   size_t data_pos = 0;
 
-  while (rune_pos < len) {
+  while (rune_pos < length) {
     // check if the next 32 bytes are ascii
-    if (likely(rune_pos + 8 < len)) {
+    if (likely(rune_pos + 8 < length)) {
       uint64_t v1;
       memcpy(&v1, runes + rune_pos, sizeof(v1));
       uint64_t v2;
