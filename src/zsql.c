@@ -4,11 +4,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "errno.h"
 #include "fuzzy_match.h"
 #include "migrate.h"
 #include "sqlh.h"
 #include "sqlite3.h"
+#include "status.h"
 #include "utf8.h"
 
 typedef struct {
@@ -70,7 +70,7 @@ static const char *const cache_fallback_env =
     "HOME";
 #endif
 
-static const int force_cache_dir =
+static const unsigned int force_cache_dir =
 #ifdef _WIN32
     1;
 #else

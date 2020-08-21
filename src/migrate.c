@@ -4,9 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "errno.h"
 #include "sqlh.h"
 #include "sqlite3.h"
+#include "status.h"
 
 static const char *const *const migrations[] = {(const char *const[]){
     "CREATE TABLE dirs("

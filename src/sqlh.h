@@ -3,8 +3,8 @@
 
 #include <string.h>
 
-#include "errno.h"
 #include "sqlite3.h"
+#include "status.h"
 
 #define sqlh_exec_static(db, sql) (sqlh_exec((db), (sql ""), strlen(sql) + 1))
 

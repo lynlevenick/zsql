@@ -1,0 +1,20 @@
+.TH Z 1 "2020-08-19" "@PACKAGE@ @VERSION@" "@PACKAGE@ documentation"
+.nh
+.SH NAME
+@PACKAGE@ - navigate faster by learning your habits
+.SH SYNOPSIS
+\fB@PACKAGE@\fP [\fBoptions\fP] \fIsearch\fP...
+.SH DESCRIPTION
+.B @PACKAGE@
+learns where you spend time and makes it easier to get there.
+.SH OPTIONS
+.SS Alternative behavior
+These options replace the standard behavior of \fB@PACKAGE@\fP.
+.TP
+\fB\-f\fP, \fB\-\-forget\fP
+Forget the path found by \fIsearch\fP.
+.TP
+\fB\-\-add\fP
+Add \fIsearch\fP to the database.
+.SH EXIT STATUS
+The \fB@PACKAGE@\fP utility exits 0 on success or 1 on errors.

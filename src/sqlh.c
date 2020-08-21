@@ -2,8 +2,8 @@
 
 #include <stdlib.h>
 
-#include "errno.h"
 #include "sqlite3.h"
+#include "status.h"
 
 int sqlh_exec(sqlite3 *db, const char *sql, int bufsize) {
   int result = ZSQL_OK;
