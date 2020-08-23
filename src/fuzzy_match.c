@@ -34,7 +34,8 @@ int fuzzy_match(const uint32_t *haystack, size_t haystack_length,
 
   size_t needle_idx = 0;
   for (size_t haystack_idx =
-           (uintptr_t)needle_in_haystack - (uintptr_t)haystack;
+           ((uintptr_t)needle_in_haystack - (uintptr_t)haystack) /
+           sizeof(*haystack);
        haystack_idx < haystack_length; ++haystack_idx) {
     // todo: compute bonuses based on word boundary etc?
 

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "fuzzy_match.h"
 #include "migrate.h"
@@ -143,25 +144,8 @@ static int zsql_open(sqlite3 **db) {
   return ZSQL_OK;
 }
 
-static int zsql_match(sqlite3 *db, const char *search) {
+static int zsql_search(sqlite3 *db, const uint32_t *runes, size_t length) {
   int result = ZSQL_OK;
-
-  uint32_t runes_short[64];
-  uint32_t *runes;
-  const size_t search_length = strlen(search);
-  size_t runes_bytes = search_length * sizeof(*runes);
-
-  const int runes_allocated = runes_bytes > sizeof(runes_short);
-  if (!runes_allocated) {
-    runes = runes_short;
-    runes_bytes = sizeof(runes_short);
-  } else {
-    runes = malloc(runes_bytes);
-    if (runes == NULL) {
-      result = ZSQL_ERROR;
-      goto exit;
-    }
-  }
 
   sqlite3_stmt *stmt;
   if (sqlh_prepare_static(
@@ -170,35 +154,36 @@ static int zsql_match(sqlite3 *db, const char *search) {
           "ORDER BY match(dir,frecency,?1) DESC",
           &stmt) != ZSQL_OK) {
     result = ZSQL_ERROR;
-    goto cleanup_mem;
+    goto exit;
   }
 
-  const size_t runes_length = utf8_to_utf32(runes, search, search_length);
-  query_t query = {.length = runes_length, .runes = runes};
+  query_t query = {.length = length, .runes = runes};
   if (sqlite3_bind_pointer(stmt, 1, &query, "", NULL) != SQLITE_OK) {
     result = ZSQL_ERROR;
-    goto cleanup_sql;
+    goto cleanup;
   }
 
   if (sqlite3_step(stmt) != SQLITE_ROW) {
     printf("no result\n");
-    goto cleanup_sql;
+    goto cleanup;
   }
 
-  // we need as many bytes in the char* as there are bytes in runes because
-  // each character in the uint32_t may expand into 4 utf-8 bytes
   const size_t result_bytes = (size_t)sqlite3_column_bytes(stmt, 0);
   // should be aligned since sqlite requires memory allocations to have
   // at least 4 byte alignment
   const uint32_t *result_runes = sqlite3_column_blob(stmt, 0);
+
+  char str_short[256];
   char *str = (char *)runes;
 
-  const int str_allocated = result_bytes > runes_bytes;
+  // we need as many bytes in the char* as there are bytes in runes because
+  // each character in the uint32_t may expand into 4 utf-8 bytes
+  const int str_allocated = result_bytes > sizeof(str_short);
   if (str_allocated) {
     str = malloc(result_bytes);
     if (str == NULL) {
       result = ZSQL_ERROR;
-      goto cleanup_sql;
+      goto cleanup;
     }
   }
 
@@ -211,20 +196,54 @@ static int zsql_match(sqlite3 *db, const char *search) {
     free(str);
   }
 
-cleanup_sql:
+cleanup:
   if (sqlh_finalize(stmt) != ZSQL_OK) {
     result = ZSQL_ERROR;
-  }
-cleanup_mem:
-  if (runes_allocated) {
-    free(runes);
   }
 exit:
   return result;
 }
 
+static int zsql_add(sqlite3 *db, const uint32_t *runes, size_t length) {
+  int result = ZSQL_OK;
+
+  sqlite3_stmt *stmt;
+  if (sqlh_prepare_static(
+          db,
+          "INSERT INTO dirs(dir)VALUES(?1)"
+          "ON CONFLICT(dir)DO UPDATE SET frecency=frecency+excluded.frecency",
+          &stmt) != ZSQL_OK) {
+    result = ZSQL_ERROR;
+    goto exit;
+  }
+
+  if (sqlite3_bind_blob(stmt, 1, runes, length * sizeof(*runes),
+                        SQLITE_STATIC) != SQLITE_OK) {
+    result = ZSQL_ERROR;
+    goto cleanup;
+  }
+
+  if (sqlite3_step(stmt) != SQLITE_DONE) {
+    result = ZSQL_ERROR;
+    goto cleanup;
+  }
+
+cleanup:
+  if (sqlh_finalize(stmt) != ZSQL_OK) {
+    result = ZSQL_ERROR;
+  }
+exit:
+  return result;
+}
+
+#define ZSQL_SEARCH 0
+#define ZSQL_ADD 1
+#define ZSQL_FORGET 2
+
 int main(int argc, char **argv) {
   int result = 0;
+
+  // option parsing
 
   if (argc < 2) {
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
@@ -237,33 +256,105 @@ int main(int argc, char **argv) {
 #endif
   }
 
-  if (sqlite3_initialize() != SQLITE_OK) {
+  int behavior = ZSQL_SEARCH;
+
+  int ch;
+  while ((ch = getopt(argc, argv, "af")) >= 0) {
+    switch (ch) {
+    case 'a':
+      if (behavior != ZSQL_SEARCH) {
+        result = 1;
+        goto exit;
+      }
+      behavior = ZSQL_ADD;
+      break;
+    case 'f':
+      if (behavior != ZSQL_SEARCH) {
+        result = 1;
+        goto exit;
+      }
+      behavior = ZSQL_FORGET;
+      break;
+    case '?':
+    default:
+      result = 1;
+      goto exit;
+    }
+  }
+  if (optind >= argc) {
     result = 1;
     goto exit;
+  }
+
+  // convert to utf32
+
+  uint32_t runes_short[64];
+  uint32_t *runes = runes_short;
+  // fixme: should use all arguments optind < argc
+  const char *search = argv[optind];
+  const size_t search_length = strlen(search);
+
+  const int runes_allocated =
+      search_length > sizeof(runes_short) / sizeof(*runes);
+  if (runes_allocated) {
+    runes = malloc(search_length * sizeof(*runes));
+    if (runes == NULL) {
+      result = ZSQL_ERROR;
+      goto exit;
+    }
+  }
+
+  const size_t runes_length = utf8_to_utf32(runes, search, search_length);
+
+  // db init
+
+  if (sqlite3_initialize() != SQLITE_OK) {
+    result = 1;
+    goto cleanup_mem;
   }
 
   sqlite3 *db;
   if (zsql_open(&db) != ZSQL_OK) {
     result = 1;
-    goto exit;
+    goto cleanup_mem;
   }
 
   if (sqlite3_busy_timeout(db, 128) != SQLITE_OK) {
     result = 1;
-    goto cleanup;
+    goto cleanup_sql;
   }
   if (zsql_migrate(db) != ZSQL_OK) {
     result = 1;
-    goto cleanup;
+    goto cleanup_sql;
   }
 
-  if (zsql_match(db, argv[1]) != ZSQL_OK) {
-    result = 1;
-    goto cleanup;
+  // behavior
+
+  switch (behavior) {
+  case ZSQL_SEARCH:
+    if (zsql_search(db, runes, runes_length) != ZSQL_OK) {
+      result = 1;
+      goto cleanup_sql;
+    }
+    break;
+  case ZSQL_ADD:
+    if (zsql_add(db, runes, runes_length) != ZSQL_OK) {
+      result = 1;
+      goto cleanup_sql;
+    }
+    break;
+  case ZSQL_FORGET:
+    break;
   }
 
-cleanup:
+  // cleanup
+
+cleanup_sql:
   sqlite3_close(db);
+cleanup_mem:
+  if (runes_allocated) {
+    free(runes);
+  }
 exit:
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
   if (result != 0) {

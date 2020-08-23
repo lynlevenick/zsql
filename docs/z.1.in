@@ -11,10 +11,10 @@ learns where you spend time and makes it easier to get there.
 .SS Alternative behavior
 These options replace the standard behavior of \fB@PACKAGE@\fP.
 .TP
-\fB\-f\fP, \fB\-\-forget\fP
+\fB\-f\fP
 Forget the path found by \fIsearch\fP.
 .TP
-\fB\-\-add\fP
+\fB\-a\fP
 Add \fIsearch\fP to the database.
 .SH EXIT STATUS
 The \fB@PACKAGE@\fP utility exits 0 on success or 1 on errors.
