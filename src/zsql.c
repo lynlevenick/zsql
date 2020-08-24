@@ -43,7 +43,7 @@ static void match_impl(sqlite3_context *context, int argc,
 
   const query_t *query = sqlite3_value_pointer(argv[2], "");
 
-  int score = fuzzy_match(dir, dir_length, query->runes, query->length);
+  int score = fuzzy_search(dir, dir_length, query->runes, query->length);
   if (score >= 0) {
     sqlite3_result_int(context, score + frecency);
   } else {

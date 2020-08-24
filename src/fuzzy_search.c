@@ -18,8 +18,8 @@ static inline const uint32_t *mem_uint32_t(const uint32_t *haystack,
   return NULL;
 }
 
-int fuzzy_match(const uint32_t *haystack, size_t haystack_length,
-                const uint32_t *needle, size_t needle_length) {
+int fuzzy_search(const uint32_t *haystack, size_t haystack_length,
+                 const uint32_t *needle, size_t needle_length) {
   if (needle_length == 0) {
     // zero length needle matches all haystacks equally well
     return 0;
