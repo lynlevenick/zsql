@@ -25,4 +25,6 @@ Forget the path found by \fIsearch\fP.
 \fB\-a\fP
 Add \fIsearch\fP to the database.
 .SH EXIT STATUS
-The \fB@PACKAGE@\fP utility exits 0 on success or 1 on errors.
+The \fB@PACKAGE@\fP utility exits 0 on success or 1 on error.
+.SH NOTES
+On Unix derivatives, \fB@PACKAGE@\fP assumes paths are encoded in UTF-8. This assumption may be violated if the user has set the `LANG' environment variable to a non-UTF-8 value in the past.
