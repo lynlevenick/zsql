@@ -5,7 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "fuzzy_match.h"
+#include "fuzzy_search.h"
 #include "migrate.h"
 #include "sqlh.h"
 #include "sqlite3.h"
