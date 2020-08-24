@@ -8,8 +8,16 @@
 .B @PACKAGE@
 learns where you spend time and makes it easier to get there.
 .SH OPTIONS
+.SS Search
+Modify how a search is performed. Ignored if an alternative behavior is used.
+.TP
+\fB\-c\fP
+Search case-sensitively.
+.TP
+\fB\-i\fP
+Search case-insensitively.
 .SS Alternative behavior
-These options replace the standard behavior of \fB@PACKAGE@\fP.
+Actions to perform rather than searching.
 .TP
 \fB\-f\fP
 Forget the path found by \fIsearch\fP.

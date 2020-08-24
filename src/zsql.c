@@ -227,47 +227,49 @@ exit:
   return result;
 }
 
-#define ZSQL_SEARCH 0
-#define ZSQL_ADD 1
-#define ZSQL_FORGET 2
+typedef enum {
+  ZSQL_BEHAVIOR_SEARCH,
+  ZSQL_BEHAVIOR_ADD,
+  ZSQL_BEHAVIOR_FORGET
+} zsql_behavior;
+typedef enum {
+  ZSQL_CASE_SMART,
+  ZSQL_CASE_SENSITIVE,
+  ZSQL_CASE_IGNORE
+} zsql_case_sensitive;
 
 int main(int argc, char **argv) {
   int result = 0;
 
   // option parsing
 
-  if (argc < 2) {
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+  if (argc < 2) {
     argv[1] = malloc(1024);
     fgets(argv[1], 1024, stdin);
     argc = 2;
-#else
-    result = 1;
-    goto exit;
-#endif
   }
+#endif
 
-  int behavior = ZSQL_SEARCH;
+  zsql_behavior behavior = ZSQL_BEHAVIOR_SEARCH;
+  zsql_case_sensitive case_sensitive = ZSQL_CASE_SMART;
 
   int ch;
-  while ((ch = getopt(argc, argv, "af")) >= 0) {
+  while ((ch = getopt(argc, argv, "acif")) >= 0) {
     switch (ch) {
     case 'a':
-      if (behavior != ZSQL_SEARCH) {
-        result = 1;
-        goto exit;
-      }
-      behavior = ZSQL_ADD;
+      behavior = ZSQL_BEHAVIOR_ADD;
+      break;
+    case 'c':
+      case_sensitive = ZSQL_CASE_SENSITIVE;
+      break;
+    case 'i':
+      case_sensitive = ZSQL_CASE_IGNORE;
       break;
     case 'f':
-      if (behavior != ZSQL_SEARCH) {
-        result = 1;
-        goto exit;
-      }
-      behavior = ZSQL_FORGET;
+      behavior = ZSQL_BEHAVIOR_FORGET;
       break;
     case '?':
-    default:
       result = 1;
       goto exit;
     }
@@ -328,19 +330,19 @@ int main(int argc, char **argv) {
   // behavior
 
   switch (behavior) {
-  case ZSQL_SEARCH:
+  case ZSQL_BEHAVIOR_SEARCH:
     if (zsql_search(db, runes, runes_length) != ZSQL_OK) {
       result = 1;
       goto cleanup_sql;
     }
     break;
-  case ZSQL_ADD:
+  case ZSQL_BEHAVIOR_ADD:
     if (zsql_add(db, runes, runes_length) != ZSQL_OK) {
       result = 1;
       goto cleanup_sql;
     }
     break;
-  case ZSQL_FORGET:
+  case ZSQL_BEHAVIOR_FORGET:
     break;
   }
 
