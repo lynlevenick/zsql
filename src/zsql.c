@@ -61,13 +61,13 @@ static const char *const cache_file = "/zsql.db";
 
 static const char *const cache_env =
 #ifdef _WIN32
-    "LocalAppData";
+    "LOCALAPPDATA";
 #else
     "XDG_CACHE_HOME";
 #endif
 static const char *const cache_fallback_env =
 #ifdef _WIN32
-    "AppData";
+    "APPDATA";
 #else
     "HOME";
 #endif
