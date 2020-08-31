@@ -8,6 +8,9 @@
 #include "sqlite3.h"
 #include "status.h"
 
+// migrations; each array is executed as a new transaction
+// new arrays are automatically run if the database version is
+// below what the program specifies
 static const char *const *const migrations[] = {(const char *const[]){
     "CREATE TABLE dirs("
     "dir BLOB NOT NULL UNIQUE CHECK (length(dir)%4==0),"
@@ -60,6 +63,7 @@ static int set_schema_version(sqlite3 *db, int schema_version) {
   return sqlh_exec(db, buffer, buffer_length + 1);
 }
 
+// mostly-constant way to detect little-endian systems
 #define system_little_endian                                                   \
   (((union {                                                                   \
      uint16_t x;                                                               \
@@ -128,11 +132,15 @@ exit:
   return result;
 }
 
+// swaps the endianness of value; should compile down to a single instruction
+// on systems that support it
 static inline uint32_t swap_endianness(uint32_t value) {
   return ((value & 0xff000000) >> 24) | ((value & 0x00ff0000) >> 8) |
          ((value & 0x0000ff00) << 8) | ((value & 0x000000ff) << 24);
 }
 
+// migrate db up through the latest migrations available, failing if the
+// database is for a version higher than what this program supports
 int zsql_migrate(sqlite3 *db) {
   int result = ZSQL_OK;
 

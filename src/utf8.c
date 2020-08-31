@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 
+// fixme: make sure these do nothing when they can't work
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
@@ -148,6 +149,8 @@ size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t length) {
   return rune_pos;
 }
 
+// converts the extended utf32 created by utf8_to_utf32 back to utf8,
+// preserving the original invalid bytes
 // assumes str is long enough to store runes encoded at utf8, a length
 // of at most 4 * length bytes. returns the number of bytes written into str
 size_t utf32_to_utf8(char *restrict str, const uint32_t *runes, size_t length) {

@@ -5,6 +5,8 @@
 #include "sqlite3.h"
 #include "status.h"
 
+// helper to prepare and execute a statement without returning
+// any rows, skipping the complications of sqlite3_exec
 int sqlh_exec(sqlite3 *db, const char *sql, int bufsize) {
   int result = ZSQL_OK;
 

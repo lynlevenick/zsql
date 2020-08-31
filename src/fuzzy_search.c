@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// like memchr but for uint32_t
 static inline const uint32_t *mem_uint32_t(const uint32_t *haystack,
                                            size_t haystack_length,
                                            uint32_t needle) {
