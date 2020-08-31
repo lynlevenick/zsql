@@ -9,8 +9,8 @@ int sqlh_exec(sqlite3 *db, const char *sql, int bufsize) {
   int result = ZSQL_OK;
 
   sqlite3_stmt *stmt;
-  if (sqlite3_prepare_v2(db, sql, bufsize, &stmt, NULL) != SQLITE_OK) {
-    result = ZSQL_ERROR;
+  if ((result = sqlite3_prepare_v2(db, sql, bufsize, &stmt, NULL)) !=
+      SQLITE_OK) {
     goto exit;
   }
 
@@ -22,6 +22,7 @@ int sqlh_exec(sqlite3 *db, const char *sql, int bufsize) {
 
 cleanup:
   if (sqlh_finalize(stmt) != ZSQL_OK) {
+    // fixme: what to do in the double-failure case?
     result = ZSQL_ERROR;
   }
 exit:

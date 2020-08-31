@@ -51,29 +51,27 @@ static void match_impl(sqlite3_context *context, int argc,
   }
 }
 
-static const char *const env_primary =
-#ifdef _WIN32
-    "LOCALAPPDATA";
-#else
-    "XDG_DATA_HOME";
-#endif
+// fixme: windows
+static const char *const env_primary = "XDG_DATA_HOME";
+static const char *const env_fallback = "HOME";
 
-static const char *const env_fallback =
-#ifdef _WIN32
-    "APPDATA";
-#else
-    "HOME";
-#endif
-
-static const char *const fallback_suffix =
-#ifdef _WIN32
-    "";
-#else
-    "/.local/share";
-#endif
+static const char *const fallback_suffix = "/.local/share";
 
 static const char *const cache_dir = "/zsql";
 static const char *const cache_file = "/zsql.db";
+
+static int zsql_ensure_dir(const char *path) {
+  struct stat dir_stat;
+  if (stat(path, &dir_stat) != 0) {
+    if (mkdir(path, 0700) != 0) {
+      return ZSQL_ERROR;
+    }
+  } else if (!S_ISDIR(dir_stat.st_mode)) {
+    return ZSQL_ERROR;
+  }
+
+  return ZSQL_OK;
+}
 
 static int zsql_open(sqlite3 **db) {
   int result = ZSQL_OK;
@@ -95,7 +93,7 @@ static int zsql_open(sqlite3 **db) {
   const size_t cache_file_length = strlen(cache_file);
   const size_t path_length = base_length +
                              (using_fallback ? fallback_suffix_length : 0) +
-                             strlen(cache_dir) + strlen(cache_file) + 1;
+                             cache_dir_length + cache_file_length + 1;
   char *path = malloc(path_length);
   if (path == NULL) {
     result = ZSQL_ERROR;
@@ -109,24 +107,29 @@ static int zsql_open(sqlite3 **db) {
 
   if (using_fallback) {
     memcpy(path + offset, fallback_suffix, fallback_suffix_length);
+    for (size_t slash_idx = 1; slash_idx < fallback_suffix_length;
+         ++slash_idx) {
+      if (fallback_suffix[slash_idx] == '/') {
+        path[offset + slash_idx] = 0;
+        if ((result = zsql_ensure_dir(path)) != ZSQL_OK) {
+          goto cleanup;
+        }
+        path[offset + slash_idx] = '/';
+      }
+    }
     offset += fallback_suffix_length;
+  }
+
+  path[offset] = 0;
+  if ((result = zsql_ensure_dir(path)) != ZSQL_OK) {
+    goto cleanup;
   }
 
   memcpy(path + offset, cache_dir, cache_dir_length);
   offset += cache_dir_length;
 
   path[offset] = 0;
-  struct stat dir_stat;
-  if (stat(path, &dir_stat) != 0) {
-    fprintf(stderr, "stat ne 0\n");
-    if (mkdir(path, 0700) != 0) {
-      fprintf(stderr, "couldn't create dir\n");
-      result = ZSQL_ERROR;
-      goto cleanup;
-    }
-  } else if (!S_ISDIR(dir_stat.st_mode)) {
-    fprintf(stderr, "not dir\n");
-    result = ZSQL_ERROR;
+  if ((result = zsql_ensure_dir(path)) != ZSQL_OK) {
     goto cleanup;
   }
 
@@ -136,7 +139,6 @@ static int zsql_open(sqlite3 **db) {
   path[offset] = 0;
 
   if (sqlite3_open(path, db) != SQLITE_OK) {
-    fprintf(stderr, "couldn't open\n");
     result = ZSQL_ERROR;
     goto cleanup;
   }
@@ -159,11 +161,11 @@ static int zsql_search(sqlite3 *db, const uint32_t *runes, size_t length) {
   int result = ZSQL_OK;
 
   sqlite3_stmt *stmt;
-  if (sqlh_prepare_static(db,
-                          "SELECT dir FROM dirs WHERE match(dir,?1)IS NOT NULL "
-                          "ORDER BY match(dir,?1)+frecency DESC",
-                          &stmt) != ZSQL_OK) {
-    result = ZSQL_ERROR;
+  if ((result = sqlh_prepare_static(
+           db,
+           "SELECT dir FROM dirs WHERE match(dir,?1)IS NOT NULL "
+           "ORDER BY match(dir,?1)+frecency DESC",
+           &stmt)) != ZSQL_OK) {
     goto exit;
   }
 
@@ -178,7 +180,6 @@ static int zsql_search(sqlite3 *db, const uint32_t *runes, size_t length) {
     printf("no result\n");
     goto cleanup;
   } else if (status != SQLITE_ROW) {
-    printf("%s\n", sqlite3_errmsg(db));
     result = ZSQL_ERROR;
     goto cleanup;
   }
@@ -205,6 +206,7 @@ static int zsql_search(sqlite3 *db, const uint32_t *runes, size_t length) {
 
 cleanup:
   if (sqlh_finalize(stmt) != ZSQL_OK) {
+    // fixme: what to do in the double-failure case?
     result = ZSQL_ERROR;
   }
 exit:
@@ -215,12 +217,11 @@ static int zsql_add(sqlite3 *db, const uint32_t *runes, size_t length) {
   int result = ZSQL_OK;
 
   sqlite3_stmt *stmt;
-  if (sqlh_prepare_static(
-          db,
-          "INSERT INTO dirs(dir)VALUES(?1)"
-          "ON CONFLICT(dir)DO UPDATE SET frecency=frecency+excluded.frecency",
-          &stmt) != ZSQL_OK) {
-    result = ZSQL_ERROR;
+  if ((result = sqlh_prepare_static(
+           db,
+           "INSERT INTO dirs(dir)VALUES(?1)"
+           "ON CONFLICT(dir)DO UPDATE SET frecency=frecency+excluded.frecency",
+           &stmt)) != ZSQL_OK) {
     goto exit;
   }
 
@@ -237,6 +238,7 @@ static int zsql_add(sqlite3 *db, const uint32_t *runes, size_t length) {
 
 cleanup:
   if (sqlh_finalize(stmt) != ZSQL_OK) {
+    // fixme: what to do in the double-failure case?
     result = ZSQL_ERROR;
   }
 exit:
@@ -252,9 +254,9 @@ typedef enum {
   ZSQL_CASE_SMART,
   ZSQL_CASE_SENSITIVE,
   ZSQL_CASE_IGNORE
-} zsql_case_sensitive;
+} zsql_case_sensitivity;
 
-// fixme: use utf-16 on windows via sqlite3_open16
+// fixme: windows
 int main(int argc, char **argv) {
   int result = 0;
 
@@ -262,14 +264,25 @@ int main(int argc, char **argv) {
 
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
   if (argc < 2) {
-    argv[1] = malloc(1024);
+    char **new_argv = malloc(2 * sizeof(*new_argv));
+    if (new_argv == NULL) {
+      result = 1;
+      goto exit;
+    }
+    new_argv[0] = argv[0];
+    new_argv[1] = malloc(1024 * sizeof(*new_argv[1]));
+    if (new_argv[1] == NULL) {
+      result = 1;
+      goto exit;
+    }
+    argv = new_argv;
     fgets(argv[1], 1024, stdin);
     argc = 2;
   }
 #endif
 
   zsql_behavior behavior = ZSQL_BEHAVIOR_SEARCH;
-  zsql_case_sensitive case_sensitive = ZSQL_CASE_SMART;
+  zsql_case_sensitivity case_sensitivity = ZSQL_CASE_SMART;
 
   int ch;
   while ((ch = getopt(argc, argv, "acif")) >= 0) {
@@ -278,10 +291,10 @@ int main(int argc, char **argv) {
       behavior = ZSQL_BEHAVIOR_ADD;
       break;
     case 'c':
-      case_sensitive = ZSQL_CASE_SENSITIVE;
+      case_sensitivity = ZSQL_CASE_SENSITIVE;
       break;
     case 'i':
-      case_sensitive = ZSQL_CASE_IGNORE;
+      case_sensitivity = ZSQL_CASE_IGNORE;
       break;
     case 'f':
       behavior = ZSQL_BEHAVIOR_FORGET;
@@ -306,8 +319,8 @@ int main(int argc, char **argv) {
   }
 
   size_t search_length = 0;
-  for (size_t i = 0; i < argl_length; ++i) {
-    search_length += (argl[i] = strlen(argv[optind + i]));
+  for (size_t arg_idx = 0; arg_idx < argl_length; ++arg_idx) {
+    search_length += (argl[arg_idx] = strlen(argv[optind + arg_idx]));
   }
 
   // we need as many bytes in the uint32_t* as there are bytes in argv because
@@ -319,9 +332,9 @@ int main(int argc, char **argv) {
   }
 
   size_t runes_length = 0;
-  for (size_t i = 0; i < argl_length; ++i) {
-    runes_length +=
-        utf8_to_utf32(runes + runes_length, argv[optind + i], argl[i]);
+  for (size_t arg_idx = 0; arg_idx < argl_length; ++arg_idx) {
+    runes_length += utf8_to_utf32(runes + runes_length, argv[optind + arg_idx],
+                                  argl[arg_idx]);
   }
 
   // db init

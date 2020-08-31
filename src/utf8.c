@@ -33,7 +33,7 @@ size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t length) {
       memcpy(&v2, data + data_pos + sizeof(v1), sizeof(v2));
       uint64_t v = v1 | v2;
       if (likely((v & 0x8080808080808080) == 0)) {
-        for (int i = 0; i < 16; ++i) {
+        for (int ii = 0; ii < 16; ++ii) {
           runes[rune_pos++] = data[data_pos++];
         }
 
@@ -170,7 +170,7 @@ size_t utf32_to_utf8(char *restrict str, const uint32_t *runes, size_t length) {
              sizeof(v4));
       uint64_t v = v1 | v2 | v3 | v4;
       if (likely((v & 0xfff8fff8fff8fff8) == 0)) {
-        for (int i = 0; i < 8; ++i) {
+        for (int ii = 0; ii < 8; ++ii) {
           data[data_pos++] = (uint8_t)(runes[rune_pos++] & 0xff);
         }
 

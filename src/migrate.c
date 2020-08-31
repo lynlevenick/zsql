@@ -31,8 +31,8 @@ static int current_schema_version(sqlite3 *db, int *schema_version) {
   int result = ZSQL_OK;
 
   sqlite3_stmt *stmt;
-  if (sqlh_prepare_static(db, "PRAGMA user_version", &stmt) != ZSQL_OK) {
-    result = ZSQL_ERROR;
+  if ((result = sqlh_prepare_static(db, "PRAGMA user_version", &stmt)) !=
+      ZSQL_OK) {
     goto exit;
   }
 
@@ -45,6 +45,7 @@ static int current_schema_version(sqlite3 *db, int *schema_version) {
 
 cleanup:
   if (sqlh_finalize(stmt) != ZSQL_OK) {
+    // fixme: what to do in the double-failure case?
     result = ZSQL_ERROR;
   }
 exit:
@@ -56,11 +57,7 @@ static int set_schema_version(sqlite3 *db, int schema_version) {
   char buffer[31];
   const int buffer_length =
       sprintf(buffer, "PRAGMA user_version=%d", schema_version);
-  if (sqlh_exec(db, buffer, buffer_length + 1) != ZSQL_OK) {
-    return ZSQL_ERROR;
-  }
-
-  return ZSQL_OK;
+  return sqlh_exec(db, buffer, buffer_length + 1);
 }
 
 #define system_little_endian                                                   \
@@ -75,10 +72,9 @@ static int current_schema_little_endian(sqlite3 *db,
   int result = ZSQL_OK;
 
   sqlite3_stmt *stmt;
-  if (sqlh_prepare_static(db,
-                          "SELECT value FROM meta WHERE key='little_endian'",
-                          &stmt) != ZSQL_OK) {
-    result = ZSQL_ERROR;
+  if ((result = sqlh_prepare_static(
+           db, "SELECT value FROM meta WHERE key='little_endian'", &stmt)) !=
+      ZSQL_OK) {
     goto exit;
   }
 
@@ -94,6 +90,7 @@ static int current_schema_little_endian(sqlite3 *db,
 
 cleanup:
   if (sqlh_finalize(stmt) != ZSQL_OK) {
+    // fixme: what to do in the double-failure case?
     result = ZSQL_ERROR;
   }
 exit:
@@ -104,12 +101,11 @@ static int set_schema_little_endian(sqlite3 *db, int schema_little_endian) {
   int result = ZSQL_OK;
 
   sqlite3_stmt *stmt;
-  if (sqlh_prepare_static(
-          db,
-          "INSERT INTO meta(key,value)VALUES('little_endian',?1)"
-          "ON CONFLICT(key)DO UPDATE SET value=excluded.value",
-          &stmt) != ZSQL_OK) {
-    result = ZSQL_ERROR;
+  if ((result = sqlh_prepare_static(
+           db,
+           "INSERT INTO meta(key,value)VALUES('little_endian',?1)"
+           "ON CONFLICT(key)DO UPDATE SET value=excluded.value",
+           &stmt)) != ZSQL_OK) {
     goto exit;
   }
 
@@ -125,6 +121,7 @@ static int set_schema_little_endian(sqlite3 *db, int schema_little_endian) {
 
 cleanup:
   if (sqlh_finalize(stmt) != ZSQL_OK) {
+    // fixme: what to do in the double-failure case?
     result = ZSQL_ERROR;
   }
 exit:
@@ -137,27 +134,30 @@ static inline uint32_t swap_endianness(uint32_t value) {
 }
 
 int zsql_migrate(sqlite3 *db) {
+  int result = ZSQL_OK;
+
   // maintain schema via migrations
 
   int schema_version;
-  if (current_schema_version(db, &schema_version) != ZSQL_OK) {
-    return ZSQL_ERROR;
+  if ((result = current_schema_version(db, &schema_version)) != ZSQL_OK) {
+    goto exit;
   }
 
   if (schema_version < 0 || schema_version > SCHEMA_VERSION) {
     // cannot operate on weird schemas we aren't aware of
-    return ZSQL_ERROR;
+    result = ZSQL_ERROR;
+    goto exit;
   }
 
   if (schema_version < SCHEMA_VERSION) {
-    if (sqlh_exec_static(db, "BEGIN EXCLUSIVE") != ZSQL_OK) {
-      return ZSQL_ERROR;
+    if ((result = sqlh_exec_static(db, "BEGIN EXCLUSIVE")) != ZSQL_OK) {
+      goto exit;
     }
 
     // once sqlite is in an exclusive transaction, there are no other readers or
     // writers. pull the schema version again to make sure a migration is not
     // performed twice
-    if (current_schema_version(db, &schema_version) != ZSQL_OK) {
+    if ((result = current_schema_version(db, &schema_version)) != ZSQL_OK) {
       goto rollback;
     }
 
@@ -165,7 +165,7 @@ int zsql_migrate(sqlite3 *db) {
       while (schema_version < SCHEMA_VERSION) {
         for (const char *const *sql = migrations[schema_version]; *sql != NULL;
              ++sql) {
-          if (sqlh_exec(db, *sql, -1) != ZSQL_OK) {
+          if ((result = sqlh_exec(db, *sql, -1)) != ZSQL_OK) {
             goto rollback;
           }
         }
@@ -173,12 +173,12 @@ int zsql_migrate(sqlite3 *db) {
         ++schema_version;
       }
 
-      if (set_schema_version(db, schema_version) != ZSQL_OK) {
+      if ((result = set_schema_version(db, schema_version)) != ZSQL_OK) {
         goto rollback;
       }
     }
 
-    if (sqlh_exec_static(db, "COMMIT") != ZSQL_OK) {
+    if ((result = sqlh_exec_static(db, "COMMIT")) != ZSQL_OK) {
       goto rollback;
     }
   }
@@ -188,33 +188,37 @@ int zsql_migrate(sqlite3 *db) {
   // that is created in the initial schema setup
 
   int schema_little_endian;
-  if (current_schema_little_endian(db, &schema_little_endian) != ZSQL_OK) {
-    return ZSQL_ERROR;
+  if ((result = current_schema_little_endian(db, &schema_little_endian)) !=
+      ZSQL_OK) {
+    goto exit;
   }
 
   if (schema_little_endian != system_little_endian) {
-    if (sqlh_exec_static(db, "BEGIN EXCLUSIVE") != ZSQL_OK) {
-      return ZSQL_ERROR;
+    if ((result = sqlh_exec_static(db, "BEGIN EXCLUSIVE")) != ZSQL_OK) {
+      goto exit;
     }
 
-    if (current_schema_little_endian(db, &schema_little_endian) != ZSQL_OK) {
+    if ((result = current_schema_little_endian(db, &schema_little_endian)) !=
+        ZSQL_OK) {
       goto rollback;
     }
 
     if (schema_little_endian != system_little_endian) {
       // todo: convert endianness of dirs in db treated as uint32_t
 
-      if (set_schema_little_endian(db, system_little_endian) != ZSQL_OK) {
+      if ((result = set_schema_little_endian(db, system_little_endian)) !=
+          ZSQL_OK) {
         goto rollback;
       }
     }
 
-    if (sqlh_exec_static(db, "COMMIT") != ZSQL_OK) {
+    if ((result = sqlh_exec_static(db, "COMMIT")) != ZSQL_OK) {
       goto rollback;
     }
   }
 
-  return ZSQL_OK;
+exit:
+  return result;
 
 rollback:
   // the error might have caused a rollback, so check if sqlite has autocommit
@@ -227,5 +231,5 @@ rollback:
     }
   }
 
-  return ZSQL_ERROR;
+  return result;
 }
