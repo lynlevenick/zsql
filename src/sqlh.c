@@ -2,31 +2,28 @@
 
 #include <stdlib.h>
 
+#include "error.h"
 #include "sqlite3.h"
-#include "status.h"
 
 // helper to prepare and execute a statement without returning
 // any rows, skipping the complications of sqlite3_exec
-int sqlh_exec(sqlite3 *db, const char *sql, int bufsize) {
-  int result = ZSQL_OK;
+zsql_error *sqlh_exec(sqlite3 *db, const char *sql, int bufsize) {
+  zsql_error *err = NULL;
 
   sqlite3_stmt *stmt;
-  if ((result = sqlite3_prepare_v2(db, sql, bufsize, &stmt, NULL)) !=
-      SQLITE_OK) {
+  if (sqlite3_prepare_v2(db, sql, bufsize, &stmt, NULL) != SQLITE_OK) {
+    err = zsql_error_from_sqlite(db, err);
     goto exit;
   }
 
   const int status = sqlite3_step(stmt);
   if (status != SQLITE_DONE && status != SQLITE_ROW) {
-    result = ZSQL_ERROR;
+    err = zsql_error_from_sqlite(db, err);
     goto cleanup;
   }
 
 cleanup:
-  if (sqlh_finalize(stmt) != ZSQL_OK) {
-    // fixme: what to do in the double-failure case?
-    result = ZSQL_ERROR;
-  }
+  err = sqlh_finalize(stmt, err);
 exit:
-  return result;
+  return err;
 }

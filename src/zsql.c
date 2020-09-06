@@ -8,11 +8,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "args.h"
+#include "error.h"
 #include "fuzzy_search.h"
 #include "migrate.h"
 #include "sqlh.h"
 #include "sqlite3.h"
-#include "status.h"
 #include "utf8.h"
 
 typedef struct {
@@ -60,21 +61,41 @@ static const char *const fallback_suffix = "/.local/share";
 static const char *const cache_dir = "/zsql";
 static const char *const cache_file = "/zsql.db";
 
-static int zsql_ensure_dir(const char *path) {
+static const char *const ensure_dir_error = "not a directory: ";
+static zsql_error *zsql_ensure_dir(const char *path) {
   struct stat dir_stat;
   if (stat(path, &dir_stat) != 0) {
     if (mkdir(path, 0700) != 0) {
-      return ZSQL_ERROR;
+      return zsql_error_from_errno(NULL);
     }
   } else if (!S_ISDIR(dir_stat.st_mode)) {
-    return ZSQL_ERROR;
+    const size_t ensure_dir_error_length = strlen(ensure_dir_error);
+    const size_t path_length = strlen(path);
+    const size_t msg_length = ensure_dir_error_length + path_length + 1;
+    char *msg = malloc(msg_length);
+    if (msg == NULL) {
+      return zsql_error_from_errno(NULL);
+    }
+    size_t offset = 0;
+
+    memcpy(msg + offset, ensure_dir_error, ensure_dir_error_length);
+    offset += ensure_dir_error_length;
+
+    memcpy(msg + offset, path, path_length);
+    offset += path_length;
+
+    msg[offset] = 0;
+
+    zsql_error *err = zsql_error_from_text(msg, NULL);
+    free(msg);
+    return err;
   }
 
-  return ZSQL_OK;
+  return NULL;
 }
 
-static int zsql_open(sqlite3 **db) {
-  int result = ZSQL_OK;
+static zsql_error *zsql_open(sqlite3 **db) {
+  zsql_error *err = NULL;
 
   int using_fallback = 0;
   const char *base = getenv(env_primary);
@@ -82,7 +103,7 @@ static int zsql_open(sqlite3 **db) {
     using_fallback = 1;
     base = getenv(env_fallback);
     if (base == NULL) {
-      result = ZSQL_ERROR;
+      err = zsql_error_from_errno(err);
       goto exit;
     }
   }
@@ -96,10 +117,9 @@ static int zsql_open(sqlite3 **db) {
                              cache_dir_length + cache_file_length + 1;
   char *path = malloc(path_length);
   if (path == NULL) {
-    result = ZSQL_ERROR;
+    err = zsql_error_from_errno(err);
     goto exit;
   }
-
   size_t offset = 0;
 
   memcpy(path + offset, base, base_length);
@@ -107,21 +127,28 @@ static int zsql_open(sqlite3 **db) {
 
   if (using_fallback) {
     memcpy(path + offset, fallback_suffix, fallback_suffix_length);
+
+    // forcing an unroll here if the compiler supports it. always generates
+    // better code, since iterating and checking the condition is pure overhead
+    // for the low number of times this will be true
+#pragma unroll
+#pragma GCC unroll(fallback_suffix_length - 1)
     for (size_t slash_idx = 1; slash_idx < fallback_suffix_length;
          ++slash_idx) {
       if (fallback_suffix[slash_idx] == '/') {
         path[offset + slash_idx] = 0;
-        if ((result = zsql_ensure_dir(path)) != ZSQL_OK) {
+        if ((err = zsql_ensure_dir(path)) != NULL) {
           goto cleanup;
         }
         path[offset + slash_idx] = '/';
       }
     }
+
     offset += fallback_suffix_length;
   }
 
   path[offset] = 0;
-  if ((result = zsql_ensure_dir(path)) != ZSQL_OK) {
+  if ((err = zsql_ensure_dir(path)) != NULL) {
     goto cleanup;
   }
 
@@ -129,7 +156,7 @@ static int zsql_open(sqlite3 **db) {
   offset += cache_dir_length;
 
   path[offset] = 0;
-  if ((result = zsql_ensure_dir(path)) != ZSQL_OK) {
+  if ((err = zsql_ensure_dir(path)) != NULL) {
     goto cleanup;
   }
 
@@ -139,7 +166,7 @@ static int zsql_open(sqlite3 **db) {
   path[offset] = 0;
 
   if (sqlite3_open(path, db) != SQLITE_OK) {
-    result = ZSQL_ERROR;
+    err = zsql_error_from_sqlite(*db, err);
     goto cleanup;
   }
 
@@ -147,31 +174,32 @@ static int zsql_open(sqlite3 **db) {
                               SQLITE_UTF8 | SQLITE_DETERMINISTIC |
                                   SQLITE_DIRECTONLY,
                               NULL, match_impl, NULL, NULL) != SQLITE_OK) {
-    result = ZSQL_ERROR;
+    err = zsql_error_from_sqlite(*db, err);
     goto cleanup;
   }
 
 cleanup:
   free(path);
 exit:
-  return result;
+  return err;
 }
 
-static int zsql_search(sqlite3 *db, const uint32_t *runes, size_t length) {
-  int result = ZSQL_OK;
+static zsql_error *zsql_search(sqlite3 *db, const uint32_t *runes,
+                               size_t length) {
+  zsql_error *err = NULL;
 
   sqlite3_stmt *stmt;
-  if ((result = sqlh_prepare_static(
+  if ((err = sqlh_prepare_static(
            db,
            "SELECT dir FROM dirs WHERE match(dir,?1)IS NOT NULL "
            "ORDER BY match(dir,?1)+frecency DESC",
-           &stmt)) != ZSQL_OK) {
+           &stmt)) != NULL) {
     goto exit;
   }
 
   zsql_query query = {.length = length, .runes = runes};
   if (sqlite3_bind_pointer(stmt, 1, &query, "", NULL) != SQLITE_OK) {
-    result = ZSQL_ERROR;
+    err = zsql_error_from_sqlite(db, err);
     goto cleanup;
   }
 
@@ -180,7 +208,7 @@ static int zsql_search(sqlite3 *db, const uint32_t *runes, size_t length) {
     printf("no result\n");
     goto cleanup;
   } else if (status != SQLITE_ROW) {
-    result = ZSQL_ERROR;
+    err = zsql_error_from_sqlite(db, err);
     goto cleanup;
   }
 
@@ -193,56 +221,50 @@ static int zsql_search(sqlite3 *db, const uint32_t *runes, size_t length) {
   // each character in the uint32_t may expand into 4 utf-8 bytes
   char *str = malloc(result_bytes);
   if (str == NULL) {
-    result = ZSQL_ERROR;
+    err = zsql_error_from_errno(NULL);
     goto cleanup;
   }
 
   const size_t written =
       utf32_to_utf8(str, result_runes, result_bytes / sizeof(*result_runes));
   fwrite(str, 1, written, stdout);
-  putc('\n', stdout);
+  fputc('\n', stdout);
 
   free(str);
 
 cleanup:
-  if (sqlh_finalize(stmt) != ZSQL_OK) {
-    // fixme: what to do in the double-failure case?
-    result = ZSQL_ERROR;
-  }
+  err = sqlh_finalize(stmt, err);
 exit:
-  return result;
+  return err;
 }
 
-static int zsql_add(sqlite3 *db, const uint32_t *runes, size_t length) {
-  int result = ZSQL_OK;
+static zsql_error *zsql_add(sqlite3 *db, const uint32_t *runes, size_t length) {
+  zsql_error *err = NULL;
 
   sqlite3_stmt *stmt;
-  if ((result = sqlh_prepare_static(
+  if ((err = sqlh_prepare_static(
            db,
            "INSERT INTO dirs(dir)VALUES(?1)"
            "ON CONFLICT(dir)DO UPDATE SET frecency=frecency+excluded.frecency",
-           &stmt)) != ZSQL_OK) {
+           &stmt)) != NULL) {
     goto exit;
   }
 
   if (sqlite3_bind_blob(stmt, 1, runes, length * sizeof(*runes),
                         SQLITE_STATIC) != SQLITE_OK) {
-    result = ZSQL_ERROR;
+    err = zsql_error_from_sqlite(db, err);
     goto cleanup;
   }
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
-    result = ZSQL_ERROR;
+    err = zsql_error_from_sqlite(db, err);
     goto cleanup;
   }
 
 cleanup:
-  if (sqlh_finalize(stmt) != ZSQL_OK) {
-    // fixme: what to do in the double-failure case?
-    result = ZSQL_ERROR;
-  }
+  err = sqlh_finalize(stmt, err);
 exit:
-  return result;
+  return err;
 }
 
 typedef enum {
@@ -258,7 +280,7 @@ typedef enum {
 
 // fixme: windows
 int main(int argc, char **argv) {
-  int result = 0;
+  zsql_error *err = NULL;
 
   // option parsing
 
@@ -266,13 +288,13 @@ int main(int argc, char **argv) {
   if (argc < 2) {
     char **new_argv = malloc(2 * sizeof(*new_argv));
     if (new_argv == NULL) {
-      result = 1;
+      err = zsql_error_from_errno(err);
       goto exit;
     }
     new_argv[0] = argv[0];
     new_argv[1] = malloc(1024 * sizeof(*new_argv[1]));
     if (new_argv[1] == NULL) {
-      result = 1;
+      err = zsql_error_from_errno(err);
       goto exit;
     }
     argv = new_argv;
@@ -280,6 +302,9 @@ int main(int argc, char **argv) {
     argc = 2;
   }
 #endif
+
+  ARGC = argc;
+  ARGV = argv;
 
   zsql_behavior behavior = ZSQL_BEHAVIOR_SEARCH;
   zsql_case_sensitivity case_sensitivity = ZSQL_CASE_SMART;
@@ -300,12 +325,11 @@ int main(int argc, char **argv) {
       behavior = ZSQL_BEHAVIOR_FORGET;
       break;
     case '?':
-      result = 1;
       goto exit;
     }
   }
   if (optind >= argc) {
-    result = 1;
+    err = zsql_error_from_text("no search specified", err);
     goto exit;
   }
 
@@ -314,7 +338,7 @@ int main(int argc, char **argv) {
   size_t argl_length = argc - optind;
   size_t *argl = malloc(argl_length * sizeof(*argl));
   if (argl == NULL) {
-    result = 1;
+    err = zsql_error_from_errno(err);
     goto exit;
   }
 
@@ -327,7 +351,7 @@ int main(int argc, char **argv) {
   // each rune in the uint32_t may expand from 1 utf-8 byte
   uint32_t *runes = malloc(search_length * sizeof(*runes));
   if (runes == NULL) {
-    result = 1;
+    err = zsql_error_from_errno(err);
     goto cleanup_argl;
   }
 
@@ -340,22 +364,20 @@ int main(int argc, char **argv) {
   // db init
 
   if (sqlite3_initialize() != SQLITE_OK) {
-    result = 1;
+    err = zsql_error_from_text("failed to initialize sqlite", err);
     goto cleanup_runes;
   }
 
   sqlite3 *db;
-  if (zsql_open(&db) != ZSQL_OK) {
-    result = 1;
+  if ((err = zsql_open(&db)) != NULL) {
     goto cleanup_runes;
   }
 
   if (sqlite3_busy_timeout(db, 128) != SQLITE_OK) {
-    result = 1;
+    err = zsql_error_from_sqlite(db, err);
     goto cleanup_sql;
   }
-  if (zsql_migrate(db) != ZSQL_OK) {
-    result = 1;
+  if ((err = zsql_migrate(db)) != NULL) {
     goto cleanup_sql;
   }
 
@@ -363,14 +385,12 @@ int main(int argc, char **argv) {
 
   switch (behavior) {
   case ZSQL_BEHAVIOR_SEARCH:
-    if (zsql_search(db, runes, runes_length) != ZSQL_OK) {
-      result = 1;
+    if ((err = zsql_search(db, runes, runes_length)) != NULL) {
       goto cleanup_sql;
     }
     break;
   case ZSQL_BEHAVIOR_ADD:
-    if (zsql_add(db, runes, runes_length) != ZSQL_OK) {
-      result = 1;
+    if ((err = zsql_add(db, runes, runes_length)) != NULL) {
       goto cleanup_sql;
     }
     break;
@@ -387,10 +407,11 @@ cleanup_runes:
 cleanup_argl:
   free(argl);
 exit:
+  if (err != NULL) {
+    zsql_error_print(err);
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-  if (result != 0) {
     abort();
-  }
 #endif
-  return result;
+  }
+  return err == NULL ? EXIT_SUCCESS : EXIT_FAILURE;
 }
