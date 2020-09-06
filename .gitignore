@@ -12,6 +12,6 @@
 /src/z
 
 .deps/
-*.o
+*.[ao]
 Makefile
 Makefile.in

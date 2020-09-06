@@ -1,4 +1,4 @@
 ACLOCAL_AMFLAGS = -I m4
 
-SUBDIRS = src
+SUBDIRS = deps src
 DIST_SUBDIRS = $(SUBDIRS) docs m4

@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "utf8proc.h"
+
 // like memchr but for uint32_t
 static inline const uint32_t *mem_uint32_t(const uint32_t *haystack,
                                            size_t haystack_length,
@@ -39,6 +41,8 @@ int fuzzy_search(const uint32_t *haystack, size_t haystack_length,
            sizeof(*haystack);
        haystack_idx < haystack_length; ++haystack_idx) {
     // todo: compute bonuses based on word boundary etc?
+    const utf8proc_property_t *props =
+        utf8proc_get_property(haystack[haystack_idx]);
 
     if (needle_idx < needle_length) {
       if (haystack[haystack_idx] == needle[needle_idx]) {
