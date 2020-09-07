@@ -14,7 +14,7 @@
 #include "migrate.h"
 #include "sqlh.h"
 #include "sqlite3.h"
-#include "utf8.h"
+#include "wtf8.h"
 
 typedef struct {
   const size_t length;
