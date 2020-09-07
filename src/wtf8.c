@@ -4,11 +4,18 @@
 #include <stdint.h>
 #include <string.h>
 
-// fixme: make sure these do nothing when they can't work
+// for this project's purposes, wtf is utf extended to preserve invalid bytes
+// rather than erroring or replacing them with \uFFFD
+
+// fixme: make sure these are defined to do nothing when they can't work
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
+// or'd into wtf32 codepoints to mark non-utf32 runes
 static const uint32_t invalid_bit = 0x70000000;
+
+// non-zero if a word break happens before rune
+int wtf32_word_break(uint32_t rune, uint32_t *state) { return 1; }
 
 // adapted from simdjson's validate_utf8, which is adapted from fuschia
 // both under the apache license
@@ -24,17 +31,14 @@ size_t wtf8_to_wtf32(uint32_t *restrict runes, const char *str, size_t length) {
   size_t rune_pos = 0;
 
   while (data_pos < length) {
-    // check if the next 16 bytes are ascii
-    size_t next_data_pos = data_pos + 16;
+    // fast path - check if the next 8 bytes are ascii
+    size_t next_data_pos = data_pos + 8;
     if (likely(next_data_pos <= length)) {
-      // if it is safe to read 16 more bytes, check that they are ascii
-      uint64_t v1;
-      memcpy(&v1, data + data_pos, sizeof(v1));
-      uint64_t v2;
-      memcpy(&v2, data + data_pos + sizeof(v1), sizeof(v2));
-      uint64_t v = v1 | v2;
+      // if it is safe to read 8 more bytes, check that they are ascii
+      uint64_t v;
+      memcpy(&v, data + data_pos, sizeof(v));
       if (likely((v & 0x8080808080808080) == 0)) {
-        for (int ii = 0; ii < 16; ++ii) {
+        for (int ii = 0; ii < 8; ++ii) {
           runes[rune_pos++] = data[data_pos++];
         }
 
@@ -114,9 +118,7 @@ size_t wtf8_to_wtf32(uint32_t *restrict runes, const char *str, size_t length) {
       }
     } else {
       // non-utf8 sequence: continuation or other invalid beginning byte
-      // flag as invalid then writeback
-      next_data_pos = data_pos + 1;
-      rune = byte | invalid_bit;
+      goto copy1;
     }
 
     runes[rune_pos++] = rune;
@@ -160,7 +162,7 @@ size_t wtf32_to_wtf8(char *restrict str, const uint32_t *runes, size_t length) {
   size_t data_pos = 0;
 
   while (rune_pos < length) {
-    // check if the next 32 bytes are ascii
+    // fast path - check if the next 32 bytes are ascii
     if (likely(rune_pos + 8 < length)) {
       uint64_t v1;
       memcpy(&v1, runes + rune_pos, sizeof(v1));
@@ -172,7 +174,7 @@ size_t wtf32_to_wtf8(char *restrict str, const uint32_t *runes, size_t length) {
       memcpy(&v4, runes + rune_pos + sizeof(v1) + sizeof(v2) + sizeof(v3),
              sizeof(v4));
       uint64_t v = v1 | v2 | v3 | v4;
-      if (likely((v & 0xfff8fff8fff8fff8) == 0)) {
+      if (likely((v & 0xffffff80ffffff80) == 0)) {
         for (int ii = 0; ii < 8; ++ii) {
           data[data_pos++] = (uint8_t)(runes[rune_pos++] & 0xff);
         }
