@@ -1,4 +1,4 @@
-[submodule "deps/utf8proc"]
-	path = deps/utf8proc
+[submodule "utf8proc"]
+	path = utf8proc
 	url = git@github.com:JuliaStrings/utf8proc.git
         ignore = dirty
