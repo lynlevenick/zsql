@@ -226,7 +226,7 @@ static zsql_error *zsql_search(sqlite3 *db, const uint32_t *runes,
   }
 
   const size_t written =
-      utf32_to_utf8(str, result_runes, result_bytes / sizeof(*result_runes));
+      wtf32_to_wtf8(str, result_runes, result_bytes / sizeof(*result_runes));
   fwrite(str, 1, written, stdout);
   fputc('\n', stdout);
 
@@ -357,7 +357,7 @@ int main(int argc, char **argv) {
 
   size_t runes_length = 0;
   for (size_t arg_idx = 0; arg_idx < argl_length; ++arg_idx) {
-    runes_length += utf8_to_utf32(runes + runes_length, argv[optind + arg_idx],
+    runes_length += wtf8_to_wtf32(runes + runes_length, argv[optind + arg_idx],
                                   argl[arg_idx]);
   }
 

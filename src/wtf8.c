@@ -17,7 +17,7 @@ static const uint32_t invalid_bit = 0x70000000;
 // which can contain any byte sequence except null
 // assumes runes is long enough to store the entirety of str's runes,
 // a length of at most length runes. returns the number of extracted runes
-size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t length) {
+size_t wtf8_to_wtf32(uint32_t *restrict runes, const char *str, size_t length) {
   const uint8_t *data = (const uint8_t *)str;
   size_t data_pos = 0;
 
@@ -149,11 +149,11 @@ size_t utf8_to_utf32(uint32_t *restrict runes, const char *str, size_t length) {
   return rune_pos;
 }
 
-// converts the extended utf32 created by utf8_to_utf32 back to utf8,
+// converts the extended utf32 created by wtf8_to_wtf32 back to wtf8,
 // preserving the original invalid bytes
-// assumes str is long enough to store runes encoded at utf8, a length
+// assumes str is long enough to store runes encoded in wtf8, a length
 // of at most 4 * length bytes. returns the number of bytes written into str
-size_t utf32_to_utf8(char *restrict str, const uint32_t *runes, size_t length) {
+size_t wtf32_to_wtf8(char *restrict str, const uint32_t *runes, size_t length) {
   size_t rune_pos = 0;
 
   uint8_t *data = (uint8_t *)str;
