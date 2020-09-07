@@ -1,3 +1,5 @@
+/Makefile
+/Makefile.in
 /aclocal.m4
 /autom4te.cache
 /compile
@@ -9,9 +11,8 @@
 /z-*.tar.gz
 
 /docs/z.1
-/src/z
+/z
 
 .deps/
-*.[ao]
-Makefile
-Makefile.in
+.dirstamp
+*.o
