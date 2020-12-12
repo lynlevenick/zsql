@@ -13,11 +13,12 @@
 #include "migrate.h"
 #include "sqlh.h"
 #include "sqlite3.h"
-#include "wtf8.h"
+#include "utf8proc.h"
 
 typedef struct {
   const size_t length;
-  const uint32_t *runes;
+  const int32_t *runes;
+  const utf8proc_option_t utf8proc_options;
 } zsql_query;
 
 static void match_impl(sqlite3_context *context, int argc,
@@ -35,15 +36,45 @@ static void match_impl(sqlite3_context *context, int argc,
     return;
   }
 
-  const size_t dir_length =
-      (size_t)sqlite3_value_bytes(argv[0]) / sizeof(uint32_t);
+  const size_t dir_length = (size_t)sqlite3_value_bytes(argv[0]);
   // should be aligned since sqlite requires memory allocations to have
   // at least 4 byte alignment
-  const uint32_t *dir = sqlite3_value_blob(argv[0]);
+  const char *dir = sqlite3_value_blob(argv[0]);
 
   const zsql_query *query = sqlite3_value_pointer(argv[1], "");
 
-  int score = fuzzy_search(dir, dir_length, query->runes, query->length);
+  size_t dir_utf32_length = dir_length;
+  int32_t *dir_utf32 = malloc(dir_utf32_length * sizeof(*dir_utf32));
+  if (dir_utf32 == NULL) {
+    sqlite3_result_error_nomem(context);
+    return;
+  }
+
+retry_decompose:;
+  ssize_t result =
+      utf8proc_decompose((uint8_t *)dir, dir_length, dir_utf32,
+                         dir_utf32_length, query->utf8proc_options);
+  if (result < 0) {
+    sqlite3_result_error(context, utf8proc_errmsg(result), -1);
+    return;
+  } else if (result > dir_utf32_length) {
+    void *allocation = realloc(dir_utf32, result * sizeof(*dir_utf32));
+    fflush(stdout);
+    if (allocation == NULL) {
+      free(dir_utf32);
+      sqlite3_result_error_nomem(context);
+      return;
+    }
+    dir_utf32_length = result;
+    dir_utf32 = allocation;
+    goto retry_decompose;
+  } else {
+    dir_utf32_length = result;
+  }
+
+  int score = fuzzy_search(dir_utf32, dir_length, query->runes, query->length);
+  free(dir_utf32);
+
   if (score >= 0) {
     sqlite3_result_int(context, score);
   } else {
@@ -184,8 +215,8 @@ exit:
   return err;
 }
 
-static zsql_error *zsql_search(sqlite3 *db, const uint32_t *runes,
-                               size_t length) {
+static zsql_error *zsql_search(sqlite3 *db, const int32_t *runes, size_t length,
+                               utf8proc_option_t utf8proc_options) {
   zsql_error *err = NULL;
 
   sqlite3_stmt *stmt;
@@ -197,7 +228,8 @@ static zsql_error *zsql_search(sqlite3 *db, const uint32_t *runes,
     goto exit;
   }
 
-  zsql_query query = {.length = length, .runes = runes};
+  zsql_query query = {
+      .length = length, .runes = runes, .utf8proc_options = utf8proc_options};
   if (sqlite3_bind_pointer(stmt, 1, &query, "", NULL) != SQLITE_OK) {
     err = zsql_error_from_sqlite(db, err);
     goto cleanup;
@@ -212,25 +244,10 @@ static zsql_error *zsql_search(sqlite3 *db, const uint32_t *runes,
     goto cleanup;
   }
 
-  const size_t result_bytes = (size_t)sqlite3_column_bytes(stmt, 0);
-  // should be aligned since sqlite requires memory allocations to have
-  // at least 4 byte alignment
-  const uint32_t *result_runes = sqlite3_column_blob(stmt, 0);
+  const size_t result_length = (size_t)sqlite3_column_bytes(stmt, 0);
+  const char *result = sqlite3_column_blob(stmt, 0);
 
-  // we need as many bytes in the char* as there are bytes in runes because
-  // each character in the uint32_t may expand into 4 utf-8 bytes
-  char *str = malloc(result_bytes);
-  if (str == NULL) {
-    err = zsql_error_from_errno(NULL);
-    goto cleanup;
-  }
-
-  const size_t written =
-      wtf32_to_wtf8(str, result_runes, result_bytes / sizeof(*result_runes));
-  fwrite(str, 1, written, stdout);
-  fputc('\n', stdout);
-
-  free(str);
+  fwrite(result, 1, result_length, stdout);
 
 cleanup:
   err = sqlh_finalize(stmt, err);
@@ -238,7 +255,7 @@ exit:
   return err;
 }
 
-static zsql_error *zsql_add(sqlite3 *db, const uint32_t *runes, size_t length) {
+static zsql_error *zsql_add(sqlite3 *db, const char *dir, size_t length) {
   zsql_error *err = NULL;
 
   sqlite3_stmt *stmt;
@@ -250,8 +267,8 @@ static zsql_error *zsql_add(sqlite3 *db, const uint32_t *runes, size_t length) {
     goto exit;
   }
 
-  if (sqlite3_bind_blob(stmt, 1, runes, length * sizeof(*runes),
-                        SQLITE_STATIC) != SQLITE_OK) {
+  if (sqlite3_bind_blob(stmt, 1, dir, length * sizeof(*dir), SQLITE_STATIC) !=
+      SQLITE_OK) {
     err = zsql_error_from_sqlite(db, err);
     goto cleanup;
   }
@@ -313,45 +330,23 @@ int main(int argc, char **argv) {
     err = zsql_error_from_text("no search specified", err);
     goto exit;
   }
-
-  // convert to utf32
-
-  size_t argl_length = argc - optind;
-  size_t *argl = malloc(argl_length * sizeof(*argl));
-  if (argl == NULL) {
-    err = zsql_error_from_errno(err);
-    goto exit;
-  }
-
-  size_t search_length = 0;
-  for (size_t arg_idx = 0; arg_idx < argl_length; ++arg_idx) {
-    search_length += (argl[arg_idx] = strlen(argv[optind + arg_idx]));
-  }
-
-  // we need as many bytes in the uint32_t* as there are bytes in argv because
-  // each rune in the uint32_t may expand from 1 utf-8 byte
-  uint32_t *runes = malloc(search_length * sizeof(*runes));
-  if (runes == NULL) {
-    err = zsql_error_from_errno(err);
-    goto cleanup_argl;
-  }
-
-  size_t runes_length = 0;
-  for (size_t arg_idx = 0; arg_idx < argl_length; ++arg_idx) {
-    runes_length += wtf8_to_wtf32(runes + runes_length, argv[optind + arg_idx],
-                                  argl[arg_idx]);
+  if (behavior == ZSQL_BEHAVIOR_ADD) {
+    if (argc - optind > 1) {
+      err = zsql_error_from_text("invalid add with multiple args", err);
+      goto exit;
+    }
   }
 
   // db init
 
   if (sqlite3_initialize() != SQLITE_OK) {
     err = zsql_error_from_text("failed to initialize sqlite", err);
-    goto cleanup_runes;
+    goto exit;
   }
 
   sqlite3 *db;
   if ((err = zsql_open(&db)) != NULL) {
-    goto cleanup_runes;
+    goto exit;
   }
 
   if (sqlite3_busy_timeout(db, 128) != SQLITE_OK) {
@@ -365,28 +360,112 @@ int main(int argc, char **argv) {
   // behavior
 
   switch (behavior) {
-  case ZSQL_BEHAVIOR_SEARCH:
-    if ((err = zsql_search(db, runes, runes_length)) != NULL) {
+  case ZSQL_BEHAVIOR_ADD: {
+    if ((err = zsql_add(db, argv[optind], strlen(argv[optind]))) != NULL) {
       goto cleanup_sql;
     }
-    break;
-  case ZSQL_BEHAVIOR_ADD:
-    if ((err = zsql_add(db, runes, runes_length)) != NULL) {
-      goto cleanup_sql;
-    }
-    break;
-  case ZSQL_BEHAVIOR_FORGET:
     break;
   }
+  case ZSQL_BEHAVIOR_FORGET:
+  case ZSQL_BEHAVIOR_SEARCH: {
+    size_t argl_length = argc - optind;
+    size_t *argl = malloc(argl_length * sizeof(*argl));
+    if (argl == NULL) {
+      err = zsql_error_from_errno(err);
+      goto cleanup_sql;
+    }
 
-  // cleanup
+    size_t search_length = 0;
+    for (size_t arg_idx = 0; arg_idx < argl_length; ++arg_idx) {
+      search_length += (argl[arg_idx] = strlen(argv[optind + arg_idx]));
+    }
+
+    // smart case
+
+    utf8proc_option_t utf8proc_options = UTF8PROC_LUMP | UTF8PROC_STRIPNA;
+    if (case_sensitivity == ZSQL_CASE_IGNORE) {
+      utf8proc_options |= UTF8PROC_CASEFOLD;
+    } else if (case_sensitivity == ZSQL_CASE_SMART) {
+      int32_t codepoint;
+      for (size_t arg_idx = 0; arg_idx < argl_length; ++arg_idx) {
+        size_t offset = 0;
+        while (offset < argl[arg_idx]) {
+          ssize_t status =
+              utf8proc_iterate((uint8_t *)argv[optind + arg_idx] + offset,
+                               argl[arg_idx] - offset, &codepoint);
+          if (status == UTF8PROC_ERROR_INVALIDUTF8) {
+            break;
+          } else if (status < 0) {
+            err = zsql_error_from_text(utf8proc_errmsg(status), err);
+            goto cleanup_sql;
+          } else {
+            offset += status;
+            if (utf8proc_isupper(codepoint)) {
+              case_sensitivity = ZSQL_CASE_SENSITIVE;
+              goto end_detectcase;
+            }
+          }
+        }
+      }
+      case_sensitivity = ZSQL_CASE_IGNORE;
+      utf8proc_options |= UTF8PROC_CASEFOLD;
+    end_detectcase:;
+    }
+
+    // pessimistically allocate more space than is needed to avoid
+    // reallocating later except in pathological cases
+    search_length += search_length;
+    int32_t *runes = malloc(search_length * sizeof(*runes));
+    if (runes == NULL) {
+      err = zsql_error_from_errno(err);
+      goto cleanup_argl;
+    }
+
+    size_t runes_length = 0;
+    for (size_t arg_idx = 0; arg_idx < argl_length; ++arg_idx) {
+    retry_decompose:;
+      size_t remaining_length = search_length - runes_length;
+      ssize_t status = utf8proc_decompose((uint8_t *)argv[optind + arg_idx],
+                                          argl[arg_idx], runes + runes_length,
+                                          remaining_length, utf8proc_options);
+      if (status < 0) {
+        err = zsql_error_from_text(utf8proc_errmsg(status), err);
+        goto cleanup_runes;
+      } else if (status > remaining_length) {
+        search_length += search_length;
+        void *allocation = realloc(runes, search_length * sizeof(*runes));
+        if (allocation == NULL) {
+          err = zsql_error_from_errno(err);
+          goto cleanup_runes;
+        }
+        runes = allocation;
+        goto retry_decompose;
+      } else {
+        runes_length += status;
+      }
+    }
+
+    if (behavior == ZSQL_BEHAVIOR_FORGET) {
+    } else if (behavior == ZSQL_BEHAVIOR_SEARCH) {
+      if ((err = zsql_search(db, runes, runes_length, utf8proc_options)) !=
+          NULL) {
+        goto cleanup_runes;
+      }
+    }
+
+  cleanup_runes:
+    free(runes);
+  cleanup_argl:
+    free(argl);
+    break;
+  }
+  default:
+    err = zsql_error_from_text("inconsistent behavior", err);
+    goto exit;
+  }
 
 cleanup_sql:
   sqlite3_close(db);
-cleanup_runes:
-  free(runes);
-cleanup_argl:
-  free(argl);
 exit:
   if (err != NULL) {
     zsql_error_print(err);

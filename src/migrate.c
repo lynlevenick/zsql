@@ -12,7 +12,7 @@
 // below what the program specifies
 static const char *const *const migrations[] = {(const char *const[]){
     "CREATE TABLE dirs("
-    "dir BLOB NOT NULL UNIQUE CHECK (length(dir)%4==0),"
+    "dir BLOB NOT NULL UNIQUE,"
     "frecency INT NOT NULL DEFAULT 1)",
 
     "CREATE INDEX index_by_frecency_and_dir ON dirs(frecency, dir)",

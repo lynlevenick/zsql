@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-extern int fuzzy_search(const uint32_t *haystack, size_t haystack_length,
-                        const uint32_t *needle, size_t needle_length);
+extern int fuzzy_search(const int32_t *haystack, size_t haystack_length,
+                        const int32_t *needle, size_t needle_length);
 
 #endif
