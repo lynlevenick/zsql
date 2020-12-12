@@ -1,7 +1,5 @@
 #include "sqlh.h"
 
-#include <stdlib.h>
-
 #include "error.h"
 #include "sqlite3.h"
 

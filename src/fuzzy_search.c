@@ -35,20 +35,27 @@ int fuzzy_search(const uint32_t *haystack, size_t haystack_length,
     return INT_MIN;
   }
 
+  utf8proc_category_t prev_category = UTF8PROC_CATEGORY_CN;
+
   size_t needle_idx = 0;
   for (size_t haystack_idx =
            ((uintptr_t)needle_in_haystack - (uintptr_t)haystack) /
            sizeof(*haystack);
        haystack_idx < haystack_length; ++haystack_idx) {
-    // todo: compute bonuses based on word boundary etc?
-    const utf8proc_property_t *props =
-        utf8proc_get_property(haystack[haystack_idx]);
+    utf8proc_category_t category = utf8proc_category(haystack[haystack_idx]);
+    if (category == UTF8PROC_CATEGORY_MN || category == UTF8PROC_CATEGORY_MC ||
+        category == UTF8PROC_CATEGORY_ME) {
+      // combining, use previous category
+      category = prev_category;
+    }
 
     if (needle_idx < needle_length) {
       if (haystack[haystack_idx] == needle[needle_idx]) {
         ++needle_idx;
       }
     }
+
+    prev_category = category;
   }
   if (needle_idx < needle_length) {
     // didn't match the entire needle; no match

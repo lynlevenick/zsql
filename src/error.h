@@ -3,7 +3,6 @@
 
 #include "sqlite3.h"
 
-struct zsql_error_impl;
 typedef struct zsql_error_impl zsql_error;
 
 extern zsql_error *zsql_error_from_errno(zsql_error *next);
