@@ -1,4 +1,4 @@
-AC_INIT([z], [1.0.0])
+AC_INIT([z], [1.0.0], [zsql@me.ash.dev])
 AC_CONFIG_MACRO_DIRS([m4])
 AC_CONFIG_SRCDIR([src/zsql.c])
 
