@@ -51,15 +51,6 @@ static void match_impl(sqlite3_context *context, int argc,
   }
 }
 
-// fixme: windows
-static const char *const env_primary = "XDG_DATA_HOME";
-static const char *const env_fallback = "HOME";
-
-static const char *const fallback_suffix = "/.local/share";
-
-static const char *const cache_dir = "/zsql";
-static const char *const cache_file = "/zsql.db";
-
 static const char *const ensure_dir_error = "not a directory: ";
 static zsql_error *zsql_ensure_dir(const char *path) {
   struct stat dir_stat;
@@ -92,6 +83,15 @@ static zsql_error *zsql_ensure_dir(const char *path) {
 
   return NULL;
 }
+
+// fixme: windows
+static const char *const env_primary = "XDG_DATA_HOME";
+static const char *const env_fallback = "HOME";
+
+static const char *const fallback_suffix = "/.local/share";
+
+static const char *const cache_dir = "/zsql";
+static const char *const cache_file = "/zsql.db";
 
 static zsql_error *zsql_open(sqlite3 **db) {
   zsql_error *err = NULL;
@@ -129,7 +129,8 @@ static zsql_error *zsql_open(sqlite3 **db) {
 
     // forcing an unroll here if the compiler supports it. always generates
     // better code, since iterating and checking the condition is pure overhead
-    // for the low number of times this will be true
+    // for the low number of times this will be true, and whether it's true
+    // can be statically determined
 #pragma unroll
 #pragma GCC unroll(fallback_suffix_length - 1)
     for (size_t slash_idx = 1; slash_idx < fallback_suffix_length;
@@ -283,25 +284,6 @@ int main(int argc, char **argv) {
 
   // option parsing
 
-#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-  if (argc < 2) {
-    char **new_argv = malloc(2 * sizeof(*new_argv));
-    if (new_argv == NULL) {
-      err = zsql_error_from_errno(err);
-      goto exit;
-    }
-    new_argv[0] = argv[0];
-    new_argv[1] = malloc(1024 * sizeof(*new_argv[1]));
-    if (new_argv[1] == NULL) {
-      err = zsql_error_from_errno(err);
-      goto exit;
-    }
-    argv = new_argv;
-    fgets(argv[1], 1024, stdin);
-    argc = 2;
-  }
-#endif
-
   ARGC = argc;
   ARGV = argv;
 
@@ -408,9 +390,6 @@ cleanup_argl:
 exit:
   if (err != NULL) {
     zsql_error_print(err);
-#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-    abort();
-#endif
   }
   return err == NULL ? EXIT_SUCCESS : EXIT_FAILURE;
 }
