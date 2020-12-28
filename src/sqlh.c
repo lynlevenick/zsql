@@ -17,10 +17,10 @@ zsql_error *sqlh_exec(sqlite3 *db, const char *sql, int bufsize) {
   const int status = sqlite3_step(stmt);
   if (status != SQLITE_DONE && status != SQLITE_ROW) {
     err = zsql_error_from_sqlite(db, err);
-    goto cleanup;
+    goto cleanup_stmt;
   }
 
-cleanup:
+cleanup_stmt:
   err = sqlh_finalize(stmt, err);
 exit:
   return err;

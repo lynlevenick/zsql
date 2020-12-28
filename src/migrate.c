@@ -39,12 +39,12 @@ static zsql_error *current_schema_version(sqlite3 *db, int *schema_version) {
 
   if (sqlite3_step(stmt) != SQLITE_ROW) {
     err = zsql_error_from_sqlite(db, NULL);
-    goto cleanup;
+    goto cleanup_stmt;
   }
 
   *schema_version = sqlite3_column_int(stmt, 0);
 
-cleanup:
+cleanup_stmt:
   err = sqlh_finalize(stmt, err);
 exit:
   return err;
@@ -84,10 +84,10 @@ static zsql_error *current_schema_little_endian(sqlite3 *db,
     *schema_little_endian = sqlite3_column_int(stmt, 0);
   } else {
     err = zsql_error_from_sqlite(db, err);
-    goto cleanup;
+    goto cleanup_stmt;
   }
 
-cleanup:
+cleanup_stmt:
   err = sqlh_finalize(stmt, err);
 exit:
   return err;
@@ -108,15 +108,15 @@ static zsql_error *set_schema_little_endian(sqlite3 *db,
 
   if (sqlite3_bind_int(stmt, 1, schema_little_endian) != SQLITE_OK) {
     err = zsql_error_from_sqlite(db, err);
-    goto cleanup;
+    goto cleanup_stmt;
   }
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
     err = zsql_error_from_sqlite(db, err);
-    goto cleanup;
+    goto cleanup_stmt;
   }
 
-cleanup:
+cleanup_stmt:
   err = sqlh_finalize(stmt, err);
 exit:
   return err;

@@ -19,9 +19,8 @@
        : zsql_error_from_sqlite((db), NULL))
 
 #define sqlh_finalize(stmt, err)                                               \
-  (sqlite3_finalize((stmt)) == SQLITE_OK                                       \
-       ? err                                                                   \
-       : zsql_error_from_sqlite((db), err))
+  (sqlite3_finalize((stmt)) == SQLITE_OK ? err                                 \
+                                         : zsql_error_from_sqlite((db), err))
 
 extern zsql_error *sqlh_exec(sqlite3 *db, const char *sql, int bufsize);
 

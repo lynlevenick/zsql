@@ -23,31 +23,35 @@ typedef struct {
 
 static void match_impl(sqlite3_context *context, int argc,
                        sqlite3_value **argv) {
+  // invariants
+
   if (argc != 2) {
     sqlite3_result_error(context,
                          "wrong number of arguments to function match()", -1);
-    return;
+    goto exit;
   }
 
   if (sqlite3_value_type(argv[0]) != SQLITE_BLOB ||
       !sqlite3_value_frombind(argv[1])) {
     sqlite3_result_error(context, "incorrect arguments to function match()",
                          -1);
-    return;
+    goto exit;
   }
 
+  // get parameters
+
   const size_t dir_length = (size_t)sqlite3_value_bytes(argv[0]);
-  // should be aligned since sqlite requires memory allocations to have
-  // at least 4 byte alignment
   const char *dir = sqlite3_value_blob(argv[0]);
 
   const zsql_query *query = sqlite3_value_pointer(argv[1], "");
 
-  size_t dir_utf32_length = dir_length;
+  // convert dir to utf32
+
+  size_t dir_utf32_length = dir_length * 2;
   int32_t *dir_utf32 = malloc(dir_utf32_length * sizeof(*dir_utf32));
   if (dir_utf32 == NULL) {
     sqlite3_result_error_nomem(context);
-    return;
+    goto exit;
   }
 
 retry_decompose:;
@@ -56,30 +60,45 @@ retry_decompose:;
                          dir_utf32_length, query->utf8proc_options);
   if (result < 0) {
     sqlite3_result_error(context, utf8proc_errmsg(result), -1);
-    return;
+    goto cleanup_dir_utf32;
   } else if (result > dir_utf32_length) {
-    void *allocation = realloc(dir_utf32, result * sizeof(*dir_utf32));
+    dir_utf32_length = result;
+    void *allocation =
+        realloc(dir_utf32, dir_utf32_length * sizeof(*dir_utf32));
     fflush(stdout);
     if (allocation == NULL) {
-      free(dir_utf32);
       sqlite3_result_error_nomem(context);
-      return;
+      goto cleanup_dir_utf32;
     }
-    dir_utf32_length = result;
     dir_utf32 = allocation;
     goto retry_decompose;
   } else {
     dir_utf32_length = result;
   }
 
-  int score = fuzzy_search(dir_utf32, dir_length, query->runes, query->length);
-  free(dir_utf32);
+  // score
+
+  double score;
+  zsql_error *err;
+  if ((err = fuzzy_search(&score, dir_utf32, dir_utf32_length, query->runes,
+                          query->length)) != NULL) {
+    // fixme: this error may have chained errors in ->next, always ignored here
+    sqlite3_result_error(context, err->msg, -1);
+    zsql_error_free(err);
+    goto cleanup_dir_utf32;
+  }
+
+  // return to sqlite
 
   if (score >= 0) {
-    sqlite3_result_int(context, score);
+    sqlite3_result_double(context, score);
   } else {
     sqlite3_result_null(context);
   }
+
+cleanup_dir_utf32:
+  free(dir_utf32);
+exit:;
 }
 
 static const char *const ensure_dir_error = "not a directory: ";
@@ -169,7 +188,7 @@ static zsql_error *zsql_open(sqlite3 **db) {
       if (fallback_suffix[slash_idx] == '/') {
         path[offset + slash_idx] = 0;
         if ((err = zsql_ensure_dir(path)) != NULL) {
-          goto cleanup;
+          goto cleanup_path;
         }
         path[offset + slash_idx] = '/';
       }
@@ -180,7 +199,7 @@ static zsql_error *zsql_open(sqlite3 **db) {
 
   path[offset] = 0;
   if ((err = zsql_ensure_dir(path)) != NULL) {
-    goto cleanup;
+    goto cleanup_path;
   }
 
   memcpy(path + offset, cache_dir, cache_dir_length);
@@ -188,7 +207,7 @@ static zsql_error *zsql_open(sqlite3 **db) {
 
   path[offset] = 0;
   if ((err = zsql_ensure_dir(path)) != NULL) {
-    goto cleanup;
+    goto cleanup_path;
   }
 
   memcpy(path + offset, cache_file, cache_file_length);
@@ -198,7 +217,7 @@ static zsql_error *zsql_open(sqlite3 **db) {
 
   if (sqlite3_open(path, db) != SQLITE_OK) {
     err = zsql_error_from_sqlite(*db, err);
-    goto cleanup;
+    goto cleanup_path;
   }
 
   if (sqlite3_create_function(*db, "match", 2,
@@ -206,51 +225,11 @@ static zsql_error *zsql_open(sqlite3 **db) {
                                   SQLITE_DIRECTONLY,
                               NULL, match_impl, NULL, NULL) != SQLITE_OK) {
     err = zsql_error_from_sqlite(*db, err);
-    goto cleanup;
+    goto cleanup_path;
   }
 
-cleanup:
+cleanup_path:
   free(path);
-exit:
-  return err;
-}
-
-static zsql_error *zsql_search(sqlite3 *db, const int32_t *runes, size_t length,
-                               utf8proc_option_t utf8proc_options) {
-  zsql_error *err = NULL;
-
-  sqlite3_stmt *stmt;
-  if ((err = sqlh_prepare_static(
-           db,
-           "SELECT dir FROM dirs WHERE match(dir,?1)IS NOT NULL "
-           "ORDER BY match(dir,?1)+frecency DESC",
-           &stmt)) != NULL) {
-    goto exit;
-  }
-
-  zsql_query query = {
-      .length = length, .runes = runes, .utf8proc_options = utf8proc_options};
-  if (sqlite3_bind_pointer(stmt, 1, &query, "", NULL) != SQLITE_OK) {
-    err = zsql_error_from_sqlite(db, err);
-    goto cleanup;
-  }
-
-  const int status = sqlite3_step(stmt);
-  if (status == SQLITE_DONE) {
-    printf("no result\n");
-    goto cleanup;
-  } else if (status != SQLITE_ROW) {
-    err = zsql_error_from_sqlite(db, err);
-    goto cleanup;
-  }
-
-  const size_t result_length = (size_t)sqlite3_column_bytes(stmt, 0);
-  const char *result = sqlite3_column_blob(stmt, 0);
-
-  fwrite(result, 1, result_length, stdout);
-
-cleanup:
-  err = sqlh_finalize(stmt, err);
 exit:
   return err;
 }
@@ -270,15 +249,116 @@ static zsql_error *zsql_add(sqlite3 *db, const char *dir, size_t length) {
   if (sqlite3_bind_blob(stmt, 1, dir, length * sizeof(*dir), SQLITE_STATIC) !=
       SQLITE_OK) {
     err = zsql_error_from_sqlite(db, err);
-    goto cleanup;
+    goto cleanup_stmt;
   }
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
     err = zsql_error_from_sqlite(db, err);
-    goto cleanup;
+    goto cleanup_stmt;
   }
 
-cleanup:
+cleanup_stmt:
+  err = sqlh_finalize(stmt, err);
+exit:
+  return err;
+}
+
+static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
+                               utf8proc_option_t utf8proc_options) {
+  zsql_error *err = NULL;
+
+  sqlite3_stmt *stmt;
+  if ((err = sqlh_prepare_static(
+           db,
+           "SELECT oid,dir FROM dirs WHERE match(dir,?1) IS NOT NULL"
+           " ORDER BY match(dir,?1)+frecency DESC",
+           &stmt)) != NULL) {
+    goto exit;
+  }
+
+  zsql_query query = {
+      .length = length, .runes = runes, .utf8proc_options = utf8proc_options};
+  if (sqlite3_bind_pointer(stmt, 1, &query, "", NULL) != SQLITE_OK) {
+    err = zsql_error_from_sqlite(db, err);
+    goto cleanup_stmt;
+  }
+
+  int status = sqlite3_step(stmt);
+  if (status == SQLITE_DONE) {
+    printf("no result\n");
+    goto cleanup_stmt;
+  } else if (status != SQLITE_ROW) {
+    err = zsql_error_from_sqlite(db, err);
+    goto cleanup_stmt;
+  }
+
+  const int64_t oid = sqlite3_column_int64(stmt, 0);
+  const size_t result_length = (size_t)sqlite3_column_bytes(stmt, 1);
+  const char *result = sqlite3_column_blob(stmt, 1);
+
+  printf("todo: ask if this should be deleted\n");
+  fwrite(result, 1, result_length, stdout);
+
+  if ((err = sqlh_finalize(stmt, err)) != NULL) {
+    goto exit;
+  }
+  if ((err = sqlh_prepare_static(db, "DELETE FROM dirs WHERE oid=?1", &stmt)) !=
+      NULL) {
+    goto exit;
+  }
+
+  if (sqlite3_bind_int64(stmt, 1, oid) != SQLITE_OK) {
+    err = zsql_error_from_sqlite(db, err);
+    goto cleanup_stmt;
+  }
+
+  status = sqlite3_step(stmt);
+  if (status != SQLITE_DONE) {
+    err = zsql_error_from_sqlite(db, err);
+    goto cleanup_stmt;
+  }
+
+cleanup_stmt:
+  err = sqlh_finalize(stmt, err);
+exit:
+  return err;
+}
+
+static zsql_error *zsql_search(sqlite3 *db, const int32_t *runes, size_t length,
+                               utf8proc_option_t utf8proc_options) {
+  zsql_error *err = NULL;
+
+  sqlite3_stmt *stmt;
+  if ((err = sqlh_prepare_static(
+           db,
+           "SELECT dir FROM dirs WHERE match(dir,?1) IS NOT NULL"
+           " ORDER BY match(dir,?1)+frecency DESC",
+           &stmt)) != NULL) {
+    goto exit;
+  }
+
+  zsql_query query = {
+      .length = length, .runes = runes, .utf8proc_options = utf8proc_options};
+  if (sqlite3_bind_pointer(stmt, 1, &query, "", NULL) != SQLITE_OK) {
+    err = zsql_error_from_sqlite(db, err);
+    goto cleanup_stmt;
+  }
+
+  const int status = sqlite3_step(stmt);
+  if (status == SQLITE_DONE) {
+    printf("no result\n");
+    goto cleanup_stmt;
+  } else if (status != SQLITE_ROW) {
+    err = zsql_error_from_sqlite(db, err);
+    goto cleanup_stmt;
+  }
+
+  const size_t result_length = (size_t)sqlite3_column_bytes(stmt, 0);
+  const char *result = sqlite3_column_blob(stmt, 0);
+
+  fwrite(result, 1, result_length, stdout);
+
+cleanup_stmt:
   err = sqlh_finalize(stmt, err);
 exit:
   return err;
@@ -382,7 +462,9 @@ int main(int argc, char **argv) {
 
     // smart case
 
-    utf8proc_option_t utf8proc_options = UTF8PROC_LUMP | UTF8PROC_STRIPNA;
+    utf8proc_option_t utf8proc_options = UTF8PROC_COMPAT | UTF8PROC_COMPOSE |
+                                         UTF8PROC_IGNORE | UTF8PROC_LUMP |
+                                         UTF8PROC_STRIPNA;
     if (case_sensitivity == ZSQL_CASE_IGNORE) {
       utf8proc_options |= UTF8PROC_CASEFOLD;
     } else if (case_sensitivity == ZSQL_CASE_SMART) {
@@ -414,7 +496,7 @@ int main(int argc, char **argv) {
 
     // pessimistically allocate more space than is needed to avoid
     // reallocating later except in pathological cases
-    search_length += search_length;
+    search_length *= 2;
     int32_t *runes = malloc(search_length * sizeof(*runes));
     if (runes == NULL) {
       err = zsql_error_from_errno(err);
@@ -432,7 +514,7 @@ int main(int argc, char **argv) {
         err = zsql_error_from_text(utf8proc_errmsg(status), err);
         goto cleanup_runes;
       } else if (status > remaining_length) {
-        search_length += search_length;
+        search_length *= 2;
         void *allocation = realloc(runes, search_length * sizeof(*runes));
         if (allocation == NULL) {
           err = zsql_error_from_errno(err);
@@ -446,6 +528,10 @@ int main(int argc, char **argv) {
     }
 
     if (behavior == ZSQL_BEHAVIOR_FORGET) {
+      if ((err = zsql_forget(db, runes, runes_length, utf8proc_options)) !=
+          NULL) {
+        goto cleanup_runes;
+      }
     } else if (behavior == ZSQL_BEHAVIOR_SEARCH) {
       if ((err = zsql_search(db, runes, runes_length, utf8proc_options)) !=
           NULL) {
@@ -469,6 +555,7 @@ cleanup_sql:
 exit:
   if (err != NULL) {
     zsql_error_print(err);
+    zsql_error_free(err);
   }
   return err == NULL ? EXIT_SUCCESS : EXIT_FAILURE;
 }

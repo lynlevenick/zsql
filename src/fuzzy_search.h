@@ -4,7 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-extern int fuzzy_search(const int32_t *haystack, size_t haystack_length,
-                        const int32_t *needle, size_t needle_length);
+#include "error.h"
+
+extern zsql_error *fuzzy_search(double *score, const int32_t *haystack,
+                                size_t haystack_length, const int32_t *needle,
+                                size_t needle_length);
 
 #endif
