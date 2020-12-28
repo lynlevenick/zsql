@@ -357,6 +357,7 @@ static zsql_error *zsql_search(sqlite3 *db, const int32_t *runes, size_t length,
   const char *result = sqlite3_column_blob(stmt, 0);
 
   fwrite(result, 1, result_length, stdout);
+  fputc('$', stdout);
 
 cleanup_stmt:
   err = sqlh_finalize(stmt, err);
