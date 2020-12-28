@@ -1,5 +1,3 @@
-ACLOCAL_AMFLAGS = -I m4
-
 bin_PROGRAMS = z
 z_CFLAGS = \
 	-I${top_srcdir}/utf8proc \
@@ -20,6 +18,4 @@ z_SOURCES = \
 
 man_MANS = docs/z.1
 
-EXTRA_DIST = \
-	m4/ax_append_flag.m4 m4/ax_check_compile_flag.m4 m4/ax_check_link_flag.m4 \
-	utf8proc/utf8proc_data.c
+EXTRA_DIST = utf8proc/utf8proc_data.c
