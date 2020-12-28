@@ -1,7 +1,7 @@
 #ifndef ZSQL_ERROR_H
 #define ZSQL_ERROR_H
 
-#include <stdint.h>
+#include <inttypes.h>
 
 #include "sqlite3.h"
 

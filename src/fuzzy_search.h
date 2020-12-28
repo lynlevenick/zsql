@@ -1,8 +1,8 @@
 #ifndef ZSQL_FUZZY_SEARCH_H
 #define ZSQL_FUZZY_SEARCH_H
 
+#include <inttypes.h>
 #include <stddef.h>
-#include <stdint.h>
 
 #include "error.h"
 
