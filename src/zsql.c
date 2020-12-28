@@ -241,7 +241,7 @@ static zsql_error *zsql_add(sqlite3 *db, const char *dir, size_t length) {
   if ((err = sqlh_prepare_static(
            db,
            "INSERT INTO dirs(dir)VALUES(?1)"
-           "ON CONFLICT(dir)DO UPDATE SET frecency=frecency+excluded.frecency",
+           "ON CONFLICT(dir)DO UPDATE SET visits=visits+excluded.visits",
            &stmt)) != NULL) {
     goto exit;
   }
@@ -271,7 +271,7 @@ static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
   if ((err = sqlh_prepare_static(
            db,
            "SELECT oid,dir FROM dirs WHERE match(dir,?1) IS NOT NULL"
-           " ORDER BY match(dir,?1)+frecency DESC",
+           " ORDER BY match(dir,?1)+visits DESC",
            &stmt)) != NULL) {
     goto exit;
   }
@@ -332,7 +332,7 @@ static zsql_error *zsql_search(sqlite3 *db, const int32_t *runes, size_t length,
   if ((err = sqlh_prepare_static(
            db,
            "SELECT dir FROM dirs WHERE match(dir,?1) IS NOT NULL"
-           " ORDER BY match(dir,?1)+frecency DESC",
+           " ORDER BY match(dir,?1)+visits DESC",
            &stmt)) != NULL) {
     goto exit;
   }

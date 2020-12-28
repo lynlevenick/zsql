@@ -65,7 +65,7 @@ static inline int codepoint_is_word(int32_t codepoint, int previous) {
          utfcat == UTF8PROC_CATEGORY_LO || utfcat == UTF8PROC_CATEGORY_ND;
 }
 
-static const double BONUS_BOUNDARY = 0.5;
+static const double BONUS_BOUNDARY = 75.0;
 
 static inline zsql_error *compute_match_bonus(double **match_bonus,
                                               const int32_t *string,
@@ -96,10 +96,10 @@ exit:
   return err;
 }
 
-static const double SCORE_GAP_INNER = -0.01;
-static const double SCORE_GAP_LEADING = -0.005;
-static const double SCORE_GAP_TRAILING = -0.005;
-static const double SCORE_MATCH_CONSECUTIVE = 1.0;
+static const double SCORE_GAP_INNER = -1.0;
+static const double SCORE_GAP_LEADING = -0.5;
+static const double SCORE_GAP_TRAILING = -0.5;
+static const double SCORE_MATCH_CONSECUTIVE = 100.0;
 
 static inline void fuzzy_rank_row(
     const int32_t *restrict haystack, const double *restrict match_bonus,
