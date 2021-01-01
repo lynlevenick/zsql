@@ -66,7 +66,6 @@ retry_decompose:;
     dir_utf32_length = result;
     void *allocation =
         realloc(dir_utf32, dir_utf32_length * sizeof(*dir_utf32));
-    fflush(stdout);
     if (allocation == NULL) {
       sqlite3_result_error_nomem(context);
       goto cleanup_dir_utf32;
