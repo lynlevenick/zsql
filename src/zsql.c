@@ -296,26 +296,31 @@ static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
   const size_t result_length = (size_t)sqlite3_column_bytes(stmt, 1);
   const char *result = sqlite3_column_blob(stmt, 1);
 
-  printf("todo: ask if this should be deleted\n");
-  fwrite(result, 1, result_length, stdout);
+  printf("Remove `%.*s'? [Yn] ",
+         (int)(result_length > INT_MAX ? INT_MAX : result_length), result);
+  const int response = fgetc(stdin);
+  const int should_remove =
+      response != EOF && response != 'n' && response != 'N';
 
-  if ((err = sqlh_finalize(stmt, err)) != NULL) {
-    goto exit;
-  }
-  if ((err = sqlh_prepare_static(db, "DELETE FROM dirs WHERE oid=?1", &stmt)) !=
-      NULL) {
-    goto exit;
-  }
+  if (should_remove) {
+    if ((err = sqlh_finalize(stmt, err)) != NULL) {
+      goto exit;
+    }
+    if ((err = sqlh_prepare_static(db, "DELETE FROM dirs WHERE oid=?1",
+                                   &stmt)) != NULL) {
+      goto exit;
+    }
 
-  if (sqlite3_bind_int64(stmt, 1, oid) != SQLITE_OK) {
-    err = zsql_error_from_sqlite(db, err);
-    goto cleanup_stmt;
-  }
+    if (sqlite3_bind_int64(stmt, 1, oid) != SQLITE_OK) {
+      err = zsql_error_from_sqlite(db, err);
+      goto cleanup_stmt;
+    }
 
-  status = sqlite3_step(stmt);
-  if (status != SQLITE_DONE) {
-    err = zsql_error_from_sqlite(db, err);
-    goto cleanup_stmt;
+    status = sqlite3_step(stmt);
+    if (status != SQLITE_DONE) {
+      err = zsql_error_from_sqlite(db, err);
+      goto cleanup_stmt;
+    }
   }
 
 cleanup_stmt:
