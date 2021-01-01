@@ -2,13 +2,13 @@
 
 #include <errno.h>
 #include <inttypes.h>
+#include <sqlite3.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "args.h"
-#include "sqlite3.h"
 
 #define MAXOF(A, B) ((A) < (B) ? (B) : (A))
 #define FSIZEOF(T, F, N)                                                       \

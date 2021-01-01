@@ -2,8 +2,7 @@
 #define ZSQL_ERROR_H
 
 #include <inttypes.h>
-
-#include "sqlite3.h"
+#include <sqlite3.h>
 
 typedef struct zsql_error_impl {
   struct zsql_error_impl *next;

@@ -1,11 +1,11 @@
 #include "migrate.h"
 
 #include <inttypes.h>
+#include <sqlite3.h>
 #include <stdio.h>
 
 #include "error.h"
 #include "sqlh.h"
-#include "sqlite3.h"
 
 // migrations; each array is executed as a new transaction
 // new arrays are automatically run if the database version is

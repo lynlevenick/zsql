@@ -1,7 +1,8 @@
 #include "sqlh.h"
 
+#include <sqlite3.h>
+
 #include "error.h"
-#include "sqlite3.h"
 
 // helper to prepare and execute a statement without returning
 // any rows, skipping the complications of sqlite3_exec

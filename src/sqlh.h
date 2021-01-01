@@ -1,10 +1,10 @@
 #ifndef ZSQL_SQLH_H
 #define ZSQL_SQLH_H
 
+#include <sqlite3.h>
 #include <string.h>
 
 #include "error.h"
-#include "sqlite3.h"
 
 #define sqlh_exec_static(db, sql) (sqlh_exec((db), (sql ""), strlen(sql) + 1))
 
