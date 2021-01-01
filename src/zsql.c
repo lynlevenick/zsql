@@ -285,7 +285,7 @@ static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
 
   int status = sqlite3_step(stmt);
   if (status == SQLITE_DONE) {
-    printf("no result\n");
+    err = zsql_error_from_text("no matches", err);
     goto cleanup_stmt;
   } else if (status != SQLITE_ROW) {
     err = zsql_error_from_sqlite(db, err);
@@ -346,7 +346,7 @@ static zsql_error *zsql_search(sqlite3 *db, const int32_t *runes, size_t length,
 
   const int status = sqlite3_step(stmt);
   if (status == SQLITE_DONE) {
-    printf("no result\n");
+    err = zsql_error_from_text("no matches", err);
     goto cleanup_stmt;
   } else if (status != SQLITE_ROW) {
     err = zsql_error_from_sqlite(db, err);
