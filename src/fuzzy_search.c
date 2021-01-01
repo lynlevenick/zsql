@@ -96,6 +96,14 @@ exit:
   return err;
 }
 
+static inline double f_max(double a, double b) {
+  if (a < b) {
+    return b;
+  } else {
+    return a;
+  }
+}
+
 static const double SCORE_GAP_INNER = -1.0;
 static const double SCORE_GAP_LEADING = -0.5;
 static const double SCORE_GAP_TRAILING = -0.5;
@@ -118,13 +126,14 @@ static inline void fuzzy_rank_row(
       if (needle_idx == 0) {
         score = (haystack_idx * SCORE_GAP_LEADING) + match_bonus[haystack_idx];
       } else if (haystack_idx > 0) {
-        score = fmax(prev_best[haystack_idx - 1] + match_bonus[haystack_idx],
-                     prev_best_with_match[haystack_idx - 1] +
-                         SCORE_MATCH_CONSECUTIVE);
+        score = f_max(prev_best[haystack_idx - 1] + match_bonus[haystack_idx],
+                      prev_best_with_match[haystack_idx - 1] +
+                          SCORE_MATCH_CONSECUTIVE);
       }
 
       cur_best_with_match[haystack_idx] = score;
-      cur_best[haystack_idx] = prev_score = fmax(score, prev_score + gap_score);
+      cur_best[haystack_idx] = prev_score =
+          f_max(score, prev_score + gap_score);
     } else {
       cur_best_with_match[haystack_idx] = -INFINITY;
       cur_best[haystack_idx] = prev_score = prev_score + gap_score;
