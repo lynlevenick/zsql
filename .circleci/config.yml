@@ -2,8 +2,8 @@ version: 2.1
 
 jobs:
   build:
-    machine:
-      image: ubuntu-2004:202010-01
+    docker:
+      - image: cimg/base:stable
     steps:
       - checkout
       - run:
@@ -17,7 +17,7 @@ jobs:
           command: |
             autoreconf --install
             ./configure
-            make -j3 distcheck
+            make "-j$(($(nproc || printf '2') + 1))" distcheck
 
 workflows:
   build:
