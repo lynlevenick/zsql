@@ -221,8 +221,11 @@ static zsql_error *zsql_open(sqlite3 **db) {
   }
 
   if (sqlite3_create_function(*db, "match", 2,
-                              SQLITE_UTF8 | SQLITE_DETERMINISTIC |
-                                  SQLITE_DIRECTONLY,
+                              SQLITE_UTF8 | SQLITE_DETERMINISTIC
+#if defined(SQLITE_VERSION_NUMBER) && SQLITE_VERSION_NUMBER >= 3031000
+                                  | SQLITE_DIRECTONLY
+#endif
+                              ,
                               NULL, match_impl, NULL, NULL) != SQLITE_OK) {
     err = zsql_error_from_sqlite(*db, err);
     goto cleanup_path;
