@@ -15,7 +15,7 @@ jobs:
           command: |
             git clone --branch v2.6.1 https://github.com/JuliaStrings/utf8proc
             cd utf8proc
-            make && sudo make install
+            make "-j$(($(nproc || printf '2') + 1))" && sudo make install
       - run:
           name: "Build"
           command: |
