@@ -17,7 +17,7 @@
 static zsql_error not_enough_memory = {
     .next = NULL,
     .opaque = (uintptr_t) & (not_enough_memory.msg),
-    .msg = "Not enough memory to allocate error"};
+    .msg = "not enough memory to allocate error"};
 
 zsql_error *zsql_error_from_errno(zsql_error *next) {
   // fixme: not safe under threading
