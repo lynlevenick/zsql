@@ -31,7 +31,6 @@ static void match_impl(sqlite3_context *context, int argc,
                          "wrong number of arguments to function match()", -1);
     goto exit;
   }
-
   if (sqlite3_value_type(argv[0]) != SQLITE_BLOB ||
       !sqlite3_value_frombind(argv[1])) {
     sqlite3_result_error(context, "incorrect arguments to function match()",
