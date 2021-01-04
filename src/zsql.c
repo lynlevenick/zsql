@@ -396,7 +396,7 @@ int main(int argc, char **argv) {
   zsql_case_sensitivity case_sensitivity = ZSQL_CASE_SMART;
 
   int ch;
-  while ((ch = getopt(argc, argv, "acif")) >= 0) {
+  while ((ch = getopt(argc, argv, "acfi")) >= 0) {
     switch (ch) {
     case 'a':
       behavior = ZSQL_BEHAVIOR_ADD;
@@ -404,11 +404,11 @@ int main(int argc, char **argv) {
     case 'c':
       case_sensitivity = ZSQL_CASE_SENSITIVE;
       break;
-    case 'i':
-      case_sensitivity = ZSQL_CASE_IGNORE;
-      break;
     case 'f':
       behavior = ZSQL_BEHAVIOR_FORGET;
+      break;
+    case 'i':
+      case_sensitivity = ZSQL_CASE_IGNORE;
       break;
     case '?':
       goto exit;
