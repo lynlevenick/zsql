@@ -221,9 +221,9 @@ static zsql_error *zsql_open(sqlite3 **db) {
   int retries = 0;
 retry_open:;
   int status = sqlite3_open(path, db);
-  if (status == SQLITE_BUSY && retries < 3) {
+  if (status == SQLITE_BUSY && retries < 32) {
     retries += 1;
-    sqlite3_sleep(10);
+    sqlite3_sleep(4);
     goto retry_open;
   } else if (status != SQLITE_OK) {
     err = zsql_error_from_sqlite(*db, err);
