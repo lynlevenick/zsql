@@ -422,7 +422,7 @@ static const char *script =
     "\n"
 
     "__z_cd(){ "
-        "if ! CDPATH='' cd -- \"${1%?}\" 2>/dev/null;then "
+        "if ! CDPATH= cd -- \"${1%?}\" 2>/dev/null;then "
             "printf 'z: could not cd to `%s'\\''\\n' \"${1%?}\";"
             "return 1;"
         "fi;"
