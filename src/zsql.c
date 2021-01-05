@@ -382,7 +382,7 @@ typedef enum {
 } zsql_case_sensitivity;
 
 // clang-format off
-const char *script =
+static const char *script =
     "if test \"$ZSH_VERSION\";then "
         "eval '"
             "typeset -ag precmd_functions;"
