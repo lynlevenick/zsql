@@ -397,9 +397,9 @@ static const char *script =
         "esac;"
     "fi\n"
 
-    "__z_add(){"
+    "__z_add()"
         "(command z -a \"$(pwd)\" &)"
-    "}\n"
+    "\n"
 
     "__z_cd(){ "
         "if ! CDPATH='' cd -- \"${1%?}\" 2>/dev/null;then "
