@@ -7,8 +7,8 @@ AC_PROG_CC
 AC_PROG_CC_C99
 
 AC_CHECK_HEADERS_ONCE([sqlite3.h utf8proc.h])
-AS_IF([test "x$ac_cv_header_sqlite3_h" != 'xyes'], [AC_MSG_ERROR([missing sqlite3 header])])
-AS_IF([test "x$ac_cv_header_utf8proc_h" != 'xyes'], [AC_MSG_ERROR([missing utf8proc header])])
+AS_IF([test "x$ac_cv_header_sqlite3_h" != 'xyes'], [AC_MSG_ERROR([cannot find sqlite3.h])])
+AS_IF([test "x$ac_cv_header_utf8proc_h" != 'xyes'], [AC_MSG_ERROR([cannot find utf8proc.h])])
 
 AC_SEARCH_LIBS([dlopen], [dl dld], [], [AC_MSG_ERROR([dlopen not found])])
 AC_SEARCH_LIBS([sqlite3_value_frombind], [sqlite3], [], [AC_MSG_ERROR([sqlite3 version 3.28 required])])

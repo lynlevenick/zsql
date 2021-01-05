@@ -265,33 +265,49 @@ exit:
   return err;
 }
 
-static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
-                               utf8proc_option_t utf8proc_options) {
+static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
+                              zsql_query *query) {
   zsql_error *err = NULL;
 
-  sqlite3_stmt *stmt;
   if ((err = sqlh_prepare_static(
            db,
            "SELECT oid,dir FROM dirs WHERE match(dir,?1) IS NOT NULL"
            " ORDER BY match(dir,?1)+visits DESC",
-           &stmt)) != NULL) {
+           stmt)) != NULL) {
     goto exit;
   }
 
-  zsql_query query = {
-      .length = length, .runes = runes, .utf8proc_options = utf8proc_options};
-  if (sqlite3_bind_pointer(stmt, 1, &query, "", NULL) != SQLITE_OK) {
+  if (sqlite3_bind_pointer(*stmt, 1, query, "", NULL) != SQLITE_OK) {
     err = zsql_error_from_sqlite(db, err);
     goto cleanup_stmt;
   }
 
-  int status = sqlite3_step(stmt);
+  int status = sqlite3_step(*stmt);
   if (status == SQLITE_DONE) {
     err = zsql_error_from_text("no matches", err);
     goto cleanup_stmt;
   } else if (status != SQLITE_ROW) {
     err = zsql_error_from_sqlite(db, err);
     goto cleanup_stmt;
+  }
+
+exit:
+  return err;
+
+cleanup_stmt:
+  err = sqlh_finalize(*stmt, err);
+  return err;
+}
+
+static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
+                               utf8proc_option_t utf8proc_options) {
+  zsql_error *err = NULL;
+
+  zsql_query query = {
+      .length = length, .runes = runes, .utf8proc_options = utf8proc_options};
+  sqlite3_stmt *stmt;
+  if ((err = zsql_match(db, &stmt, &query)) != NULL) {
+    goto exit;
   }
 
   const int64_t oid = sqlite3_column_int64(stmt, 0);
@@ -318,7 +334,7 @@ static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
       goto cleanup_stmt;
     }
 
-    status = sqlite3_step(stmt);
+    const int status = sqlite3_step(stmt);
     if (status != SQLITE_DONE) {
       err = zsql_error_from_sqlite(db, err);
       goto cleanup_stmt;
@@ -335,33 +351,15 @@ static zsql_error *zsql_search(sqlite3 *db, const int32_t *runes, size_t length,
                                utf8proc_option_t utf8proc_options) {
   zsql_error *err = NULL;
 
+  zsql_query query = {
+      .length = length, .runes = runes, .utf8proc_options = utf8proc_options};
   sqlite3_stmt *stmt;
-  if ((err = sqlh_prepare_static(
-           db,
-           "SELECT dir FROM dirs WHERE match(dir,?1) IS NOT NULL"
-           " ORDER BY match(dir,?1)+visits DESC",
-           &stmt)) != NULL) {
+  if ((err = zsql_match(db, &stmt, &query)) != NULL) {
     goto exit;
   }
 
-  zsql_query query = {
-      .length = length, .runes = runes, .utf8proc_options = utf8proc_options};
-  if (sqlite3_bind_pointer(stmt, 1, &query, "", NULL) != SQLITE_OK) {
-    err = zsql_error_from_sqlite(db, err);
-    goto cleanup_stmt;
-  }
-
-  const int status = sqlite3_step(stmt);
-  if (status == SQLITE_DONE) {
-    err = zsql_error_from_text("no matches", err);
-    goto cleanup_stmt;
-  } else if (status != SQLITE_ROW) {
-    err = zsql_error_from_sqlite(db, err);
-    goto cleanup_stmt;
-  }
-
-  const size_t result_length = (size_t)sqlite3_column_bytes(stmt, 0);
-  const char *result = sqlite3_column_blob(stmt, 0);
+  const size_t result_length = (size_t)sqlite3_column_bytes(stmt, 1);
+  const char *result = sqlite3_column_blob(stmt, 1);
 
   fwrite(result, 1, result_length, stdout);
   fputc('$', stdout);
@@ -383,7 +381,63 @@ typedef enum {
   ZSQL_CASE_IGNORE
 } zsql_case_sensitivity;
 
-// fixme: windows
+// clang-format off
+const char *script =
+    "if test \"$ZSH_VERSION\";then "
+        "eval '"
+            "typeset -ag precmd_functions;"
+            "if test \"$precmd_functions[(Ie)__z_add]\" -eq 0;then "
+                "precmd_functions+=(__z_add);"
+            "fi"
+        "';"
+    "else "
+        "case \";${PROMPT_COMMAND:=__z_add};\" in "
+            "*\\;__z_add\\;*);;"
+            "*)PROMPT_COMMAND=\"${PROMPT_COMMAND:+$PROMPT_COMMAND;}__z_add\";"
+        "esac;"
+    "fi\n"
+
+    "__z_add(){"
+        "(command z -a \"$(pwd)\" &)"
+    "}\n"
+
+    "__z_cd(){ "
+        "if ! CDPATH='' cd -- \"${1%?}\" 2>/dev/null;then "
+            "printf 'z: could not cd to `%s'\\''\\n' \"${1%?}\";"
+            "return 1;"
+        "fi;"
+    "}\n"
+
+    "__z_check(){ "
+        "while :;do "
+            "case \"$1\" in "
+                "-a|-f|-S)"
+                    "return 1;;"
+                "--)"
+                    "return 0;;"
+                "*)"
+                    "return 0;"
+            "esac;"
+            "shift;"
+        "done;"
+        "return 0;"
+    "}\n"
+
+    "z(){ "
+        "if __z_check \"$@\";then "
+            "__z_selection=\"$(command z \"$@\")\";"
+            "__z_status=$?;"
+            "if test $__z_status -eq 0;then "
+                "__z_cd \"$__z_selection\";"
+            "else "
+                "return $__z_status;"
+            "fi;"
+        "else "
+            "command z \"$@\";"
+        "fi;"
+    "}";
+// clang-format on
+
 int main(int argc, char **argv) {
   zsql_error *err = NULL;
 
@@ -396,7 +450,7 @@ int main(int argc, char **argv) {
   zsql_case_sensitivity case_sensitivity = ZSQL_CASE_SMART;
 
   int ch;
-  while ((ch = getopt(argc, argv, "acfi")) >= 0) {
+  while ((ch = getopt(argc, argv, "acfiS")) >= 0) {
     switch (ch) {
     case 'a':
       behavior = ZSQL_BEHAVIOR_ADD;
@@ -410,7 +464,11 @@ int main(int argc, char **argv) {
     case 'i':
       case_sensitivity = ZSQL_CASE_IGNORE;
       break;
+    case 'S':
+      printf("%s", script);
+      goto exit;
     case '?':
+      err = zsql_error_from_text("unknown option", err);
       goto exit;
     }
   }

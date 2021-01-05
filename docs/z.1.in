@@ -9,7 +9,7 @@
 learns where you spend time and makes it easier to get there.
 .SH OPTIONS
 .SS Case sensitivity
-By default, searches are case insensitive unless they contain an uppercase character.
+Unless specified, searches are case insensitive if they contain no uppercase characters.
 .TP
 \fB\-c\fP
 Search case-sensitively.
@@ -24,7 +24,10 @@ Forget the path found by \fIsearch\fP.
 .TP
 \fB\-a\fP
 Add \fIsearch\fP to the database.
+.TP
+\fB\-S\fP
+Write the wrapper script to standard output and exit.
 .SH EXIT STATUS
 The \fB@PACKAGE@\fP utility exits 0 on success or 1 on error.
 .SH NOTES
-On Unix derivatives, \fB@PACKAGE@\fP assumes paths are encoded in UTF-8. This assumption may be violated if the user has set the `LANG' environment variable to a non-UTF-8 value in the past.
+\fB@PACKAGE@\fP assumes paths are encoded in UTF-8.
