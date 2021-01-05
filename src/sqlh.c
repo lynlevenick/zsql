@@ -15,7 +15,7 @@ zsql_error *sqlh_exec(sqlite3 *db, const char *sql, int bufsize) {
     goto exit;
   }
 
-  const int status = sqlite3_step(stmt);
+  int status = sqlite3_step(stmt);
   if (status != SQLITE_DONE && status != SQLITE_ROW) {
     err = zsql_error_from_sqlite(db, err);
     goto cleanup_stmt;

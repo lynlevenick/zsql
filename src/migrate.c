@@ -116,19 +116,18 @@ zsql_error *zsql_migrate(sqlite3 *db) {
     }
   }
 
-exit:
-  return err;
-
-rollback:
-  // the error might have caused a rollback, so check if sqlite has autocommit
-  // disabled. if it does (return is zero), then the transaction is still
-  // happening and a rollback should be performed
-  if (!sqlite3_get_autocommit(db)) {
-    if (sqlh_exec_static(db, "ROLLBACK") != NULL) {
-      // fixme: error while trying to rollback? how could one recover from
-      // this state?
+  if (0) {
+  rollback:
+    // the error might have caused a rollback, so check if sqlite has autocommit
+    // disabled. if it does (return is zero), then the transaction is still
+    // happening and a rollback should be performed
+    if (!sqlite3_get_autocommit(db)) {
+      if (sqlh_exec_static(db, "ROLLBACK") != NULL) {
+        // fixme: error while trying to rollback? how could one recover from
+        // this state?
+      }
     }
   }
-
+exit:
   return err;
 }

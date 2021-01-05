@@ -1,9 +1,11 @@
 #include <inttypes.h>
 #include <limits.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <sys/stat.h>
@@ -89,7 +91,9 @@ retry_decompose:;
 
   // return to sqlite
 
-  if (score >= 0) {
+  if (score > -INFINITY) {
+    /* printf("%lf ;; %.*s\n", score, */
+    /*        (int)(dir_length > INT_MAX ? INT_MAX : dir_length), dir); */
     sqlite3_result_double(context, score);
   } else {
     sqlite3_result_null(context);
@@ -214,9 +218,21 @@ static zsql_error *zsql_open(sqlite3 **db) {
 
   path[offset] = 0;
 
-  if (sqlite3_open(path, db) != SQLITE_OK) {
+  int retries = 0;
+retry_open:;
+  int status = sqlite3_open(path, db);
+  if (status == SQLITE_BUSY && retries < 3) {
+    retries += 1;
+    sqlite3_sleep(10);
+    goto retry_open;
+  } else if (status != SQLITE_OK) {
     err = zsql_error_from_sqlite(*db, err);
     goto cleanup_path;
+  }
+
+  if (sqlite3_busy_timeout(*db, 128) != SQLITE_OK) {
+    err = zsql_error_from_sqlite(*db, err);
+    goto cleanup_sql;
   }
 
   if (sqlite3_create_function(*db, "match", 2,
@@ -227,9 +243,13 @@ static zsql_error *zsql_open(sqlite3 **db) {
                               ,
                               NULL, match_impl, NULL, NULL) != SQLITE_OK) {
     err = zsql_error_from_sqlite(*db, err);
-    goto cleanup_path;
+    goto cleanup_sql;
   }
 
+  if (0) {
+  cleanup_sql:
+    sqlite3_close(*db);
+  }
 cleanup_path:
   free(path);
 exit:
@@ -291,11 +311,11 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
     goto cleanup_stmt;
   }
 
+  if (0) {
+  cleanup_stmt:
+    err = sqlh_finalize(*stmt, err);
+  }
 exit:
-  return err;
-
-cleanup_stmt:
-  err = sqlh_finalize(*stmt, err);
   return err;
 }
 
@@ -334,7 +354,7 @@ static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
       goto cleanup_stmt;
     }
 
-    const int status = sqlite3_step(stmt);
+    int status = sqlite3_step(stmt);
     if (status != SQLITE_DONE) {
       err = zsql_error_from_sqlite(db, err);
       goto cleanup_stmt;
@@ -495,10 +515,6 @@ int main(int argc, char **argv) {
     goto exit;
   }
 
-  if (sqlite3_busy_timeout(db, 128) != SQLITE_OK) {
-    err = zsql_error_from_sqlite(db, err);
-    goto cleanup_sql;
-  }
   if ((err = zsql_migrate(db)) != NULL) {
     goto cleanup_sql;
   }

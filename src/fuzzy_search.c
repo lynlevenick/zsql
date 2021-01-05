@@ -104,10 +104,10 @@ static inline double f_max(double a, double b) {
   }
 }
 
-static const double SCORE_GAP_INNER = -1.0;
-static const double SCORE_GAP_LEADING = -0.5;
-static const double SCORE_GAP_TRAILING = -0.5;
-static const double SCORE_MATCH_CONSECUTIVE = 100.0;
+static const double SCORE_GAP_INNER = -60.0;
+static const double SCORE_GAP_LEADING = -10.0;
+static const double SCORE_GAP_TRAILING = -30.0;
+static const double SCORE_MATCH_CONSECUTIVE = 2000.0;
 
 static inline void fuzzy_rank_row(
     const int32_t *restrict haystack, const double *restrict match_bonus,
