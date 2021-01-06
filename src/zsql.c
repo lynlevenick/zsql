@@ -92,8 +92,6 @@ retry_decompose:;
   // return to sqlite
 
   if (score > -INFINITY) {
-    /* printf("%lf ;; %.*s\n", score, */
-    /*        (int)(dir_length > INT_MAX ? INT_MAX : dir_length), dir); */
     sqlite3_result_double(context, score);
   } else {
     sqlite3_result_null(context);
@@ -262,8 +260,10 @@ static zsql_error *zsql_add(sqlite3 *db, const char *dir, size_t length) {
   sqlite3_stmt *stmt;
   if ((err = sqlh_prepare_static(
            db,
-           "INSERT INTO dirs(dir)VALUES(?1)"
-           "ON CONFLICT(dir)DO UPDATE SET visits=visits+excluded.visits",
+           "INSERT INTO dirs(dir,visited_at)VALUES(?1,CURRENT_TIMESTAMP)"
+           "ON CONFLICT(dir)DO UPDATE SET"
+           " visits=visits+excluded.visits"
+           ",visited_at=excluded.visited_at",
            &stmt)) != NULL) {
     goto exit;
   }
@@ -291,8 +291,11 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
 
   if ((err = sqlh_prepare_static(
            db,
-           "SELECT oid,dir FROM dirs WHERE match(dir,?1) IS NOT NULL"
-           " ORDER BY match(dir,?1)+visits DESC",
+           "SELECT oid,dir,"
+           "m+visits+300./DENSE_RANK()OVER(ORDER BY visited_at DESC)r"
+           " FROM ("
+           "SELECT *,match(dir,?1)m FROM dirs LIMIT -1"
+           ")WHERE m IS NOT NULL ORDER BY r DESC",
            stmt)) != NULL) {
     goto exit;
   }
@@ -309,6 +312,37 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
   } else if (status != SQLITE_ROW) {
     err = zsql_error_from_sqlite(db, err);
     goto cleanup_stmt;
+  }
+
+  if (0 /* DEBUG */) {
+    for (; status == SQLITE_ROW; status = sqlite3_step(*stmt)) {
+      const size_t result_length = (size_t)sqlite3_column_bytes(*stmt, 1);
+      const char *result = sqlite3_column_blob(*stmt, 1);
+      const double rank = sqlite3_column_double(*stmt, 2);
+
+      printf("%.4lf\t%.*s\n", rank,
+             (int)(result_length > INT_MAX ? INT_MAX : result_length), result);
+    }
+
+    if (status == SQLITE_DONE) {
+      status = sqlite3_reset(*stmt);
+      if (status != SQLITE_OK) {
+        err = zsql_error_from_sqlite(db, err);
+        goto cleanup_stmt;
+      }
+
+      status = sqlite3_step(*stmt);
+      if (status == SQLITE_DONE) {
+        err = zsql_error_from_text("inconsistent state after debug", err);
+        goto cleanup_stmt;
+      } else if (status != SQLITE_ROW) {
+        err = zsql_error_from_sqlite(db, err);
+        goto cleanup_stmt;
+      }
+    } else {
+      err = zsql_error_from_sqlite(db, err);
+      goto cleanup_stmt;
+    }
   }
 
   if (0) {

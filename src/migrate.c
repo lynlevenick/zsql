@@ -7,32 +7,49 @@
 #include "error.h"
 #include "sqlh.h"
 
-// migrations; each array is executed as a new transaction
+#define index_by_visits_and_dir                                                \
+  "CREATE INDEX index_by_visits_and_dir ON dirs(visits, dir)"
+#define trigger_on_insert_forget                                               \
+  "CREATE TRIGGER trigger_on_insert_forget "                                   \
+  "INSERT ON dirs "                                                            \
+  "WHEN(SELECT SUM(visits)FROM dirs)+NEW.visits>=5000 "                        \
+  "BEGIN "                                                                     \
+  "UPDATE dirs SET visits=CAST(visits*0.9 AS INT);"                            \
+  "DELETE FROM dirs WHERE visits=0;"                                           \
+  "END"
+#define trigger_on_update_forget                                               \
+  "CREATE TRIGGER trigger_on_update_forget "                                   \
+  "AFTER UPDATE ON dirs "                                                      \
+  "WHEN(SELECT SUM(visits)FROM dirs)>=5000 "                                   \
+  "BEGIN "                                                                     \
+  "UPDATE dirs SET visits=CAST(visits*0.9 AS INT);"                            \
+  "DELETE FROM dirs WHERE visits=0;"                                           \
+  "END"
+
+// each array is considered a database version
 // new arrays are automatically run if the database version is
 // below what the program specifies
-static const char *const *const migrations[] = {(const char *const[]){
-    "CREATE TABLE dirs("
-    "dir BLOB NOT NULL UNIQUE,"
-    "visits INT NOT NULL DEFAULT 1)",
+static const char *const *const migrations[] = {
+    (const char *const[]){"CREATE TABLE dirs("
+                          "dir BLOB NOT NULL UNIQUE,"
+                          "visits INT NOT NULL DEFAULT 1)",
 
-    "CREATE INDEX index_by_visits_and_dir ON dirs(visits, dir)",
+                          index_by_visits_and_dir, trigger_on_insert_forget,
+                          trigger_on_update_forget, NULL},
+    (const char *const[]){
+        "ALTER TABLE dirs RENAME TO old_dirs",
 
-    "CREATE TRIGGER trigger_on_insert_forget "
-    "INSERT ON dirs "
-    "WHEN(SELECT SUM(visits)FROM dirs)+NEW.visits>=5000 "
-    "BEGIN "
-    "UPDATE dirs SET visits=CAST(visits*0.9 AS INT);"
-    "DELETE FROM dirs WHERE visits=0;"
-    "END",
+        "CREATE TABLE dirs("
+        "dir BLOB NOT NULL UNIQUE,"
+        "visits INT NOT NULL DEFAULT 1,"
+        "visited_at DATETIME NOT NULL)",
 
-    "CREATE TRIGGER trigger_on_update_forget "
-    "AFTER UPDATE ON dirs "
-    "WHEN(SELECT SUM(visits)FROM dirs)>=5000 "
-    "BEGIN "
-    "UPDATE dirs SET visits=CAST(visits*0.9 AS INT);"
-    "DELETE FROM dirs WHERE visits=0;"
-    "END",
-    NULL}};
+        "INSERT INTO dirs SELECT *,CURRENT_TIMESTAMP visited_at FROM old_dirs",
+        "DROP TABLE old_dirs",
+
+        index_by_visits_and_dir,
+        "CREATE INDEX index_by_visited_at ON dirs(visited_at)",
+        trigger_on_insert_forget, trigger_on_update_forget, NULL}};
 static const int SCHEMA_VERSION = sizeof(migrations) / sizeof(*migrations);
 
 static zsql_error *current_schema_version(sqlite3 *db, int *schema_version) {
