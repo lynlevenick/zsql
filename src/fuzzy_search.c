@@ -4,9 +4,10 @@
 #include <limits.h>
 #include <math.h>
 #include <stddef.h>
+#include <stdlib.h>
+#include <utf8proc.h>
 
 #include "error.h"
-#include "utf8proc.h"
 
 #define SWAP(T, A, B)                                                          \
   do {                                                                         \
@@ -65,7 +66,7 @@ static inline int codepoint_is_word(int32_t codepoint, int previous) {
          utfcat == UTF8PROC_CATEGORY_LO || utfcat == UTF8PROC_CATEGORY_ND;
 }
 
-static const double BONUS_BOUNDARY = 150.0;
+static const double BONUS_BOUNDARY = 6250.0;
 
 static inline zsql_error *compute_match_bonus(double **match_bonus,
                                               const int32_t *string,
@@ -104,10 +105,10 @@ static inline double f_max(double a, double b) {
   }
 }
 
-static const double SCORE_GAP_INNER = -75.0;
-static const double SCORE_GAP_LEADING = -50.0;
-static const double SCORE_GAP_TRAILING = -125.0;
-static const double SCORE_MATCH_CONSECUTIVE = 250.0;
+static const double SCORE_GAP_INNER = -250.0;
+static const double SCORE_GAP_LEADING = -75.0;
+static const double SCORE_GAP_TRAILING = -150.0;
+static const double SCORE_MATCH_CONSECUTIVE = 4500.0;
 
 static inline void fuzzy_rank_row(
     const int32_t *restrict haystack, const double *restrict match_bonus,

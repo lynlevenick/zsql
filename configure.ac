@@ -6,6 +6,8 @@ AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_PROG_CC
 AC_PROG_CC_C99
 
+AC_CHECK_FUNCS_ONCE([flockfile funlockfile fwrite_unlocked putc_unlocked])
+
 AC_CHECK_HEADERS_ONCE([sqlite3.h utf8proc.h])
 AS_IF([test "x$ac_cv_header_sqlite3_h" != 'xyes'], [AC_MSG_ERROR([cannot find sqlite3.h])])
 AS_IF([test "x$ac_cv_header_utf8proc_h" != 'xyes'], [AC_MSG_ERROR([cannot find utf8proc.h])])

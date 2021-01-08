@@ -5,10 +5,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
-
-#include <sys/stat.h>
+#include <utf8proc.h>
 
 #include "args.h"
 #include "error.h"
@@ -16,7 +16,6 @@
 #include "migrate.h"
 #include "sqlh.h"
 #include "sqlite3.h"
-#include "utf8proc.h"
 
 typedef struct {
   const size_t length;
@@ -292,7 +291,7 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
   if ((err = sqlh_prepare_static(
            db,
            "SELECT oid,dir,"
-           "m+visits+300./DENSE_RANK()OVER(ORDER BY visited_at DESC)r"
+           "m+visits+1000./DENSE_RANK()OVER(ORDER BY visited_at DESC)r"
            " FROM ("
            "SELECT *,match(dir,?1)m FROM dirs LIMIT -1"
            ")WHERE m IS NOT NULL ORDER BY r DESC",
@@ -368,9 +367,17 @@ static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
   const size_t result_length = (size_t)sqlite3_column_bytes(stmt, 1);
   const char *result = sqlite3_column_blob(stmt, 1);
 
-  printf("Remove `%.*s'? [Yn] ",
-         (int)(result_length > INT_MAX ? INT_MAX : result_length), result);
+  if (printf("Remove `%.*s'? [Yn] ",
+             (int)(result_length > INT_MAX ? INT_MAX : result_length),
+             result) < 0) {
+    err = zsql_error_from_errno(err);
+    goto cleanup_stmt;
+  }
   const int response = fgetc(stdin);
+  if (response == EOF && !feof(stdin)) {
+    err = zsql_error_from_errno(err);
+    goto cleanup_stmt;
+  }
   const int should_remove =
       response != EOF && response != 'n' && response != 'N';
 
@@ -415,8 +422,36 @@ static zsql_error *zsql_search(sqlite3 *db, const int32_t *runes, size_t length,
   const size_t result_length = (size_t)sqlite3_column_bytes(stmt, 1);
   const char *result = sqlite3_column_blob(stmt, 1);
 
-  fwrite(result, 1, result_length, stdout);
-  fputc('$', stdout);
+#if HAVE_FLOCKFILE && HAVE_FUNLOCKFILE && HAVE_PUTC_UNLOCKED
+  flockfile(stdout);
+#if HAVE_FWRITE_UNLOCKED
+  if (fwrite_unlocked(result, 1, result_length, stdout) != result_length) {
+    err = zsql_error_from_errno(err);
+    goto cleanup_stmt;
+  }
+#else
+  for (size_t i = 0; i < result_length; ++i) {
+    if (putc_unlocked(result[i], stdout) == EOF) {
+      err = zsql_error_from_errno(err);
+      goto cleanup_stmt;
+    }
+  }
+#endif
+  if (putc_unlocked('$', stdout) == EOF) {
+    err = zsql_error_from_errno(err);
+    goto cleanup_stmt;
+  }
+  funlockfile(stdout);
+#else
+  if (fwrite(result, 1, result_length, stdout) != result_length) {
+    err = zsql_error_from_errno(err);
+    goto cleanup_stmt;
+  }
+  if (putc('$', stdout) == EOF) {
+    err = zsql_error_from_errno(err);
+    goto cleanup_stmt;
+  }
+#endif
 
 cleanup_stmt:
   err = sqlh_finalize(stmt, err);
@@ -519,7 +554,9 @@ int main(int argc, char **argv) {
       case_sensitivity = ZSQL_CASE_IGNORE;
       break;
     case 'S':
-      printf("%s", script);
+      if (printf("%s", script) < 0) {
+        err = zsql_error_from_errno(err);
+      }
       goto exit;
     case '?':
       err = zsql_error_from_text("unknown option", err);
