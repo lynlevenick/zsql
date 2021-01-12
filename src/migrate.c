@@ -133,7 +133,7 @@ zsql_error *zsql_migrate(sqlite3 *db) {
     }
   }
 
-  if (0) {
+  if (0) { // error path only
   rollback:
     // the error might have caused a rollback, so check if sqlite has autocommit
     // disabled. if it does (return is zero), then the transaction is still

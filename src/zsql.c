@@ -243,7 +243,7 @@ retry_open:;
     goto cleanup_sql;
   }
 
-  if (0) {
+  if (0) { // error path only
   cleanup_sql:
     sqlite3_close(*db);
   }
@@ -344,7 +344,7 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
     }
   }
 
-  if (0) {
+  if (0) { // error path only
   cleanup_stmt:
     err = sqlh_finalize(*stmt, err);
   }
