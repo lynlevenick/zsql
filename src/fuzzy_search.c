@@ -17,7 +17,7 @@
   } while (0)
 
 // returns non-zero if ranking is needed
-static int fuzzy_match(double *score, const int32_t *haystack,
+static int fuzzy_match(float *score, const int32_t *haystack,
                        size_t haystack_length, const int32_t *needle,
                        size_t needle_length) {
   if (needle_length == 0) {
@@ -49,7 +49,7 @@ static int fuzzy_match(double *score, const int32_t *haystack,
   }
   if (needle_length == haystack_length) {
     // matched and same lengths, perfect match
-    *score = 1e6;
+    *score = 1e6f;
     return 0;
   }
 
@@ -66,14 +66,13 @@ static inline int codepoint_is_word(int32_t codepoint, int previous) {
          utfcat == UTF8PROC_CATEGORY_LO || utfcat == UTF8PROC_CATEGORY_ND;
 }
 
-static const double BONUS_BOUNDARY = 6250.0;
+static const float BONUS_BOUNDARY = 6250.f;
 
-static inline zsql_error *compute_match_bonus(double **match_bonus,
-                                              const int32_t *string,
-                                              size_t length) {
+static inline zsql_error *
+compute_match_bonus(float **match_bonus, const int32_t *string, size_t length) {
   zsql_error *err = NULL;
 
-  double *temp = malloc(length * sizeof(*temp));
+  float *temp = malloc(length * sizeof(*temp));
   if (temp == NULL) {
     err = zsql_error_from_errno(NULL);
     goto exit;
@@ -86,7 +85,7 @@ static inline zsql_error *compute_match_bonus(double **match_bonus,
     if (prev_was_word != is_word) {
       temp[idx] = BONUS_BOUNDARY;
     } else {
-      temp[idx] = 0.0;
+      temp[idx] = 0.f;
     }
 
     prev_was_word = is_word;
@@ -97,7 +96,7 @@ exit:
   return err;
 }
 
-static inline double f_max(double a, double b) {
+static inline float f32_max(float a, float b) {
   if (a < b) {
     return b;
   } else {
@@ -105,36 +104,36 @@ static inline double f_max(double a, double b) {
   }
 }
 
-static const double SCORE_GAP_INNER = -250.0;
-static const double SCORE_GAP_LEADING = -75.0;
-static const double SCORE_GAP_TRAILING = -150.0;
-static const double SCORE_MATCH_CONSECUTIVE = 4500.0;
+static const float SCORE_GAP_INNER = -250.f;
+static const float SCORE_GAP_LEADING = -75.f;
+static const float SCORE_GAP_TRAILING = -150.f;
+static const float SCORE_MATCH_CONSECUTIVE = 4500.f;
 
 static inline void fuzzy_rank_row(
-    const int32_t *restrict haystack, const double *restrict match_bonus,
+    const int32_t *restrict haystack, const float *restrict match_bonus,
     size_t haystack_length, const int32_t *restrict needle,
-    size_t needle_length, const double *restrict prev_best_with_match,
-    const double *restrict prev_best, double *restrict cur_best_with_match,
-    double *restrict cur_best, size_t needle_idx) {
-  double prev_score = -INFINITY;
+    size_t needle_length, const float *restrict prev_best_with_match,
+    const float *restrict prev_best, float *restrict cur_best_with_match,
+    float *restrict cur_best, size_t needle_idx) {
+  float prev_score = -INFINITY;
   double gap_score =
       (needle_idx == needle_length - 1) ? SCORE_GAP_TRAILING : SCORE_GAP_INNER;
 
   for (size_t haystack_idx = 0; haystack_idx < haystack_length;
        ++haystack_idx) {
     if (needle[needle_idx] == haystack[haystack_idx]) {
-      double score = -INFINITY;
+      float score = -INFINITY;
       if (needle_idx == 0) {
         score = (haystack_idx * SCORE_GAP_LEADING) + match_bonus[haystack_idx];
       } else if (haystack_idx > 0) {
-        score = f_max(prev_best[haystack_idx - 1] + match_bonus[haystack_idx],
-                      prev_best_with_match[haystack_idx - 1] +
-                          SCORE_MATCH_CONSECUTIVE);
+        score = f32_max(prev_best[haystack_idx - 1] + match_bonus[haystack_idx],
+                        prev_best_with_match[haystack_idx - 1] +
+                            SCORE_MATCH_CONSECUTIVE);
       }
 
       cur_best_with_match[haystack_idx] = score;
       cur_best[haystack_idx] = prev_score =
-          f_max(score, prev_score + gap_score);
+          f32_max(score, prev_score + gap_score);
     } else {
       cur_best_with_match[haystack_idx] = -INFINITY;
       cur_best[haystack_idx] = prev_score = prev_score + gap_score;
@@ -142,35 +141,35 @@ static inline void fuzzy_rank_row(
   }
 }
 
-static zsql_error *fuzzy_rank(double *score, const int32_t *haystack,
+static zsql_error *fuzzy_rank(float *score, const int32_t *haystack,
                               size_t haystack_length, const int32_t *needle,
                               size_t needle_length) {
   zsql_error *err = NULL;
 
-  double *match_bonus;
+  float *match_bonus;
   if ((err = compute_match_bonus(&match_bonus, haystack, haystack_length)) !=
       NULL) {
     goto exit;
   }
 
-  double *prev_best_with_match =
+  float *prev_best_with_match =
       malloc(haystack_length * sizeof(*prev_best_with_match));
   if (prev_best_with_match == NULL) {
     err = zsql_error_from_errno(err);
     goto cleanup_match_bonus;
   }
-  double *prev_best = malloc(haystack_length * sizeof(*prev_best));
+  float *prev_best = malloc(haystack_length * sizeof(*prev_best));
   if (prev_best == NULL) {
     err = zsql_error_from_errno(err);
     goto cleanup_prev_best_with_match;
   }
-  double *cur_best_with_match =
+  float *cur_best_with_match =
       malloc(haystack_length * sizeof(*cur_best_with_match));
   if (cur_best_with_match == NULL) {
     err = zsql_error_from_errno(err);
     goto cleanup_prev_best;
   }
-  double *cur_best = malloc(haystack_length * sizeof(*cur_best));
+  float *cur_best = malloc(haystack_length * sizeof(*cur_best));
   if (cur_best == NULL) {
     err = zsql_error_from_errno(err);
     goto cleanup_cur_best_with_match;
@@ -181,8 +180,8 @@ static zsql_error *fuzzy_rank(double *score, const int32_t *haystack,
                    needle_length, prev_best_with_match, prev_best,
                    cur_best_with_match, cur_best, needle_idx);
 
-    SWAP(double *, cur_best_with_match, prev_best_with_match);
-    SWAP(double *, cur_best, prev_best);
+    SWAP(float *, cur_best_with_match, prev_best_with_match);
+    SWAP(float *, cur_best, prev_best);
   }
 
   *score = prev_best[haystack_length - 1];
@@ -201,7 +200,7 @@ exit:
   return err;
 }
 
-zsql_error *fuzzy_search(double *score, const int32_t *haystack,
+zsql_error *fuzzy_search(float *score, const int32_t *haystack,
                          size_t haystack_length, const int32_t *needle,
                          size_t needle_length) {
   if (fuzzy_match(score, haystack, haystack_length, needle, needle_length) !=

@@ -62,7 +62,7 @@ retry_decompose:;
   if (result < 0) {
     sqlite3_result_error(context, utf8proc_errmsg(result), -1);
     goto cleanup_dir_utf32;
-  } else if (result > dir_utf32_length) {
+  } else if ((size_t)result > dir_utf32_length) {
     dir_utf32_length = result;
     void *allocation =
         realloc(dir_utf32, dir_utf32_length * sizeof(*dir_utf32));
@@ -78,7 +78,7 @@ retry_decompose:;
 
   // score
 
-  double score;
+  float score;
   zsql_error *err;
   if ((err = fuzzy_search(&score, dir_utf32, dir_utf32_length, query->runes,
                           query->length)) != NULL) {
@@ -91,7 +91,7 @@ retry_decompose:;
   // return to sqlite
 
   if (score > -INFINITY) {
-    sqlite3_result_double(context, score);
+    sqlite3_result_double(context, (double)score);
   } else {
     sqlite3_result_null(context);
   }
@@ -666,7 +666,7 @@ int main(int argc, char **argv) {
       if (status < 0) {
         err = zsql_error_from_text(utf8proc_errmsg(status), err);
         goto cleanup_runes;
-      } else if (status > remaining_length) {
+      } else if ((size_t)status > remaining_length) {
         search_length *= 2;
         void *allocation = realloc(runes, search_length * sizeof(*runes));
         if (allocation == NULL) {
