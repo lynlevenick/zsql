@@ -14,10 +14,15 @@
 #define FSIZEOF(T, F, N)                                                       \
   MAXOF(sizeof(T), offsetof(T, F) + sizeof(((T){0}).F[0]) * (N))
 
-static zsql_error not_enough_memory = {
-    .next = NULL,
-    .opaque = (uintptr_t) & (not_enough_memory.msg),
-    .msg = "not enough memory to allocate error"};
+#define NOT_ENOUGH_MEMORY_MESSAGE "not enough memory to allocate error"
+struct {
+  void *next;
+  uintptr_t opaque;
+  char msg[sizeof NOT_ENOUGH_MEMORY_MESSAGE];
+} not_enough_memory_raw = {.next = NULL,
+                           .opaque = (uintptr_t) & (not_enough_memory_raw.msg),
+                           .msg = NOT_ENOUGH_MEMORY_MESSAGE};
+zsql_error *not_enough_memory = (zsql_error *)&not_enough_memory_raw;
 
 zsql_error *zsql_error_from_errno(zsql_error *next) {
   // fixme: not safe under threading
@@ -39,7 +44,7 @@ zsql_error *zsql_error_from_text(const char *msg, zsql_error *next) {
   const size_t msg_length = strlen(msg);
   zsql_error *err = malloc(FSIZEOF(zsql_error, msg, msg_length + 1));
   if (err == NULL) {
-    return &not_enough_memory;
+    return not_enough_memory;
   }
 
   err->next = next;
@@ -65,7 +70,7 @@ void zsql_error_free(zsql_error *err) {
     zsql_error_free(next);
   }
 
-  if (err != &not_enough_memory) {
+  if (err != not_enough_memory) {
     free(err);
   }
 }
