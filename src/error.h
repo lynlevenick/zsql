@@ -4,10 +4,10 @@
 #include <inttypes.h>
 #include <sqlite3.h>
 
-typedef struct {
-  void *next;
+typedef struct zsql_error_impl {
+  struct zsql_error_impl *next;
   uintptr_t opaque;
-  char msg[];
+  char *msg;
 } zsql_error;
 
 extern zsql_error *zsql_error_from_errno(zsql_error *next);

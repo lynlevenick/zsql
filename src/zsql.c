@@ -290,7 +290,7 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
 
   if ((err = sqlh_prepare_static(
            db,
-           "SELECT oid,dir,"
+           "SELECT id,dir,"
            "m+visits+1000./DENSE_RANK()OVER(ORDER BY visited_at DESC)r"
            " FROM ("
            "SELECT *,match(dir,?1)m FROM dirs LIMIT -1"
@@ -319,8 +319,8 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
       const char *result = sqlite3_column_blob(*stmt, 1);
       const double rank = sqlite3_column_double(*stmt, 2);
 
-      printf("%.4lf\t%.*s\n", rank,
-             (int)(result_length > INT_MAX ? INT_MAX : result_length), result);
+      fprintf(stderr, "%.4lf\t%.*s\n", rank,
+              (int)(result_length > INT_MAX ? INT_MAX : result_length), result);
     }
 
     if (status == SQLITE_DONE) {
@@ -363,7 +363,7 @@ static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
     goto exit;
   }
 
-  const int64_t oid = sqlite3_column_int64(stmt, 0);
+  const int64_t id = sqlite3_column_int64(stmt, 0);
   const size_t result_length = (size_t)sqlite3_column_bytes(stmt, 1);
   const char *result = sqlite3_column_blob(stmt, 1);
 
@@ -385,12 +385,12 @@ static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
     if ((err = sqlh_finalize(stmt, err)) != NULL) {
       goto exit;
     }
-    if ((err = sqlh_prepare_static(db, "DELETE FROM dirs WHERE oid=?1",
+    if ((err = sqlh_prepare_static(db, "DELETE FROM dirs WHERE id=?1",
                                    &stmt)) != NULL) {
       goto exit;
     }
 
-    if (sqlite3_bind_int64(stmt, 1, oid) != SQLITE_OK) {
+    if (sqlite3_bind_int64(stmt, 1, id) != SQLITE_OK) {
       err = zsql_error_from_sqlite(db, err);
       goto cleanup_stmt;
     }

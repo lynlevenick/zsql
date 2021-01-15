@@ -9,6 +9,8 @@
 
 #define index_by_visits_and_dir                                                \
   "CREATE INDEX index_by_visits_and_dir ON dirs(visits, dir)"
+#define index_by_visited_at                                                    \
+  "CREATE INDEX index_by_visited_at ON dirs(visited_at)"
 #define trigger_on_insert_forget                                               \
   "CREATE TRIGGER trigger_on_insert_forget "                                   \
   "INSERT ON dirs "                                                            \
@@ -47,9 +49,21 @@ static const char *const *const migrations[] = {
         "INSERT INTO dirs SELECT *,CURRENT_TIMESTAMP visited_at FROM old_dirs",
         "DROP TABLE old_dirs",
 
-        index_by_visits_and_dir,
-        "CREATE INDEX index_by_visited_at ON dirs(visited_at)",
-        trigger_on_insert_forget, trigger_on_update_forget, NULL}};
+        index_by_visits_and_dir, index_by_visited_at, trigger_on_insert_forget,
+        trigger_on_update_forget, NULL},
+    (const char *const[]){
+        "ALTER TABLE dirs RENAME TO old_dirs",
+
+        "CREATE TABLE dirs("
+        "id INTEGER PRIMARY KEY,"
+        "dir BLOB NOT NULL UNIQUE,"
+        "visits INT NOT NULL DEFAULT 1,"
+        "visited_at DATETIME NOT NULL)",
+
+        "INSERT INTO dirs SELECT oid id,* FROM old_dirs", "DROP TABLE old_dirs",
+
+        index_by_visits_and_dir, index_by_visited_at, trigger_on_insert_forget,
+        trigger_on_update_forget, NULL}};
 static const int SCHEMA_VERSION = sizeof(migrations) / sizeof(*migrations);
 
 static zsql_error *current_schema_version(sqlite3 *db, int *schema_version) {
