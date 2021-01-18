@@ -115,10 +115,10 @@ static inline void fuzzy_rank_row(
     size_t needle_length, const float *restrict prev_best_with_match,
     const float *restrict prev_best, float *restrict cur_best_with_match,
     float *restrict cur_best, size_t needle_idx) {
-  float prev_score = -INFINITY;
-  double gap_score =
+  const float gap_score =
       (needle_idx == needle_length - 1) ? SCORE_GAP_TRAILING : SCORE_GAP_INNER;
 
+  float prev_score = -INFINITY;
   for (size_t haystack_idx = 0; haystack_idx < haystack_length;
        ++haystack_idx) {
     if (needle[needle_idx] == haystack[haystack_idx]) {
