@@ -66,32 +66,20 @@ static inline int codepoint_is_word(int32_t codepoint, int previous) {
 
 static const float BONUS_BOUNDARY = 6250.f;
 
-static inline zsql_error *
-compute_match_bonus(float **match_bonus, const int32_t *string, size_t length) {
-  zsql_error *err = NULL;
-
-  float *temp = malloc(length * sizeof(*temp));
-  if (temp == NULL) {
-    err = zsql_error_from_errno(NULL);
-    goto exit;
-  }
-
+static inline void compute_match_bonus(float *match_bonus,
+                                       const int32_t *string, size_t length) {
   int prev_was_word = 0;
 
   for (size_t idx = 0; idx < length; ++idx) {
     int is_word = codepoint_is_word(string[idx], prev_was_word);
     if (prev_was_word != is_word) {
-      temp[idx] = BONUS_BOUNDARY;
+      match_bonus[idx] = BONUS_BOUNDARY;
     } else {
-      temp[idx] = 0.f;
+      match_bonus[idx] = 0.f;
     }
 
     prev_was_word = is_word;
   }
-
-  *match_bonus = temp;
-exit:
-  return err;
 }
 
 static inline float f32_max(float a, float b) {
@@ -139,39 +127,63 @@ fuzzy_rank_row(const int32_t *haystack, const float *match_bonus,
   }
 }
 
+#ifdef HAVE_TLS
+#define FUZZY_BUFFER_SIZE 1024
+static thread_local float fuzzy_buffers[5][FUZZY_BUFFER_SIZE];
+#endif
+
 static zsql_error *fuzzy_rank(float *score, const int32_t *haystack,
                               size_t haystack_length, const int32_t *needle,
                               size_t needle_length) {
   zsql_error *err = NULL;
 
   float *match_bonus;
-  if ((err = compute_match_bonus(&match_bonus, haystack, haystack_length)) !=
-      NULL) {
-    goto exit;
-  }
+  float *prev_best_with_match;
+  float *prev_best;
+  float *cur_best_with_match;
+  float *cur_best;
 
-  float *prev_best_with_match =
-      malloc(haystack_length * sizeof(*prev_best_with_match));
-  if (prev_best_with_match == NULL) {
-    err = zsql_error_from_errno(err);
-    goto cleanup_match_bonus;
+#ifdef HAVE_TLS
+  if (haystack_length <= FUZZY_BUFFER_SIZE) {
+    match_bonus = fuzzy_buffers[0];
+    prev_best_with_match = fuzzy_buffers[1];
+    prev_best = fuzzy_buffers[2];
+    cur_best_with_match = fuzzy_buffers[3];
+    cur_best = fuzzy_buffers[4];
+  } else {
+#endif
+    match_bonus = malloc(haystack_length * sizeof(*match_bonus));
+    if (match_bonus == NULL) {
+      err = zsql_error_from_errno(err);
+      goto exit;
+    }
+    prev_best_with_match =
+        malloc(haystack_length * sizeof(*prev_best_with_match));
+    if (prev_best_with_match == NULL) {
+      err = zsql_error_from_errno(err);
+      goto cleanup_match_bonus;
+    }
+    prev_best = malloc(haystack_length * sizeof(*prev_best));
+    if (prev_best == NULL) {
+      err = zsql_error_from_errno(err);
+      goto cleanup_prev_best_with_match;
+    }
+    cur_best_with_match =
+        malloc(haystack_length * sizeof(*cur_best_with_match));
+    if (cur_best_with_match == NULL) {
+      err = zsql_error_from_errno(err);
+      goto cleanup_prev_best;
+    }
+    cur_best = malloc(haystack_length * sizeof(*cur_best));
+    if (cur_best == NULL) {
+      err = zsql_error_from_errno(err);
+      goto cleanup_cur_best_with_match;
+    }
+#ifdef HAVE_TLS
   }
-  float *prev_best = malloc(haystack_length * sizeof(*prev_best));
-  if (prev_best == NULL) {
-    err = zsql_error_from_errno(err);
-    goto cleanup_prev_best_with_match;
-  }
-  float *cur_best_with_match =
-      malloc(haystack_length * sizeof(*cur_best_with_match));
-  if (cur_best_with_match == NULL) {
-    err = zsql_error_from_errno(err);
-    goto cleanup_prev_best;
-  }
-  float *cur_best = malloc(haystack_length * sizeof(*cur_best));
-  if (cur_best == NULL) {
-    err = zsql_error_from_errno(err);
-    goto cleanup_cur_best_with_match;
-  }
+#endif
+
+  compute_match_bonus(match_bonus, haystack, haystack_length);
 
   for (size_t needle_idx = 0; needle_idx < needle_length; ++needle_idx) {
     fuzzy_rank_row(haystack, match_bonus, haystack_length, needle,
@@ -184,16 +196,22 @@ static zsql_error *fuzzy_rank(float *score, const int32_t *haystack,
 
   *score = prev_best[haystack_length - 1];
 
-cleanup_cur_best:
-  free(cur_best);
-cleanup_cur_best_with_match:
-  free(cur_best_with_match);
-cleanup_prev_best:
-  free(prev_best);
-cleanup_prev_best_with_match:
-  free(prev_best_with_match);
-cleanup_match_bonus:
-  free(match_bonus);
+#ifdef HAVE_TLS
+  if (haystack_length > FUZZY_BUFFER_SIZE) {
+#endif
+  cleanup_cur_best:
+    free(cur_best);
+  cleanup_cur_best_with_match:
+    free(cur_best_with_match);
+  cleanup_prev_best:
+    free(prev_best);
+  cleanup_prev_best_with_match:
+    free(prev_best_with_match);
+  cleanup_match_bonus:
+    free(match_bonus);
+#ifdef HAVE_TLS
+  }
+#endif
 exit:
   return err;
 }

@@ -22,6 +22,11 @@ typedef struct {
   const utf8proc_option_t utf8proc_options;
 } zsql_query;
 
+#ifdef HAVE_TLS
+#define MATCH_BUFFER_SIZE 1024
+static thread_local int32_t match_buffer[MATCH_BUFFER_SIZE];
+#endif
+
 static void match_impl(sqlite3_context *context, int argc,
                        sqlite3_value **argv) {
   // invariants
@@ -48,11 +53,20 @@ static void match_impl(sqlite3_context *context, int argc,
   // convert dir to utf32
 
   size_t dir_utf32_length = dir_length * 2;
-  int32_t *dir_utf32 = malloc(dir_utf32_length * sizeof(*dir_utf32));
-  if (dir_utf32 == NULL) {
-    sqlite3_result_error_nomem(context);
-    goto exit;
+  int32_t *dir_utf32;
+#ifdef HAVE_TLS
+  if (dir_utf32_length <= MATCH_BUFFER_SIZE) {
+    dir_utf32 = match_buffer;
+  } else {
+#endif
+    dir_utf32 = malloc(dir_utf32_length * sizeof(*dir_utf32));
+    if (dir_utf32 == NULL) {
+      sqlite3_result_error_nomem(context);
+      goto exit;
+    }
+#ifdef HAVE_TLS
   }
+#endif
 
 retry_decompose:;
   ssize_t result =
@@ -63,13 +77,25 @@ retry_decompose:;
     goto cleanup_dir_utf32;
   } else if ((size_t)result > dir_utf32_length) {
     dir_utf32_length = result;
-    void *allocation =
-        realloc(dir_utf32, dir_utf32_length * sizeof(*dir_utf32));
-    if (allocation == NULL) {
-      sqlite3_result_error_nomem(context);
-      goto cleanup_dir_utf32;
+#ifdef HAVE_TLS
+    if (dir_utf32 == match_buffer) {
+      dir_utf32 = malloc(dir_utf32_length * sizeof(*dir_utf32));
+      if (dir_utf32 == NULL) {
+        sqlite3_result_error_nomem(context);
+        goto exit;
+      }
+    } else {
+#endif
+      void *allocation =
+          realloc(dir_utf32, dir_utf32_length * sizeof(*dir_utf32));
+      if (allocation == NULL) {
+        sqlite3_result_error_nomem(context);
+        goto cleanup_dir_utf32;
+      }
+      dir_utf32 = allocation;
+#ifdef HAVE_TLS
     }
-    dir_utf32 = allocation;
+#endif
     goto retry_decompose;
   } else {
     dir_utf32_length = result;
@@ -95,8 +121,18 @@ retry_decompose:;
     sqlite3_result_null(context);
   }
 
+#ifdef HAVE_TLS
+  if (dir_utf32_length > MATCH_BUFFER_SIZE) {
+  cleanup_dir_utf32:
+    if (dir_utf32 != match_buffer) {
+#else
 cleanup_dir_utf32:
-  free(dir_utf32);
+#endif
+      free(dir_utf32);
+#ifdef HAVE_TLS
+    }
+  }
+#endif
 exit:;
 }
 
