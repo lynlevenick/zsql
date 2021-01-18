@@ -299,7 +299,7 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
     goto exit;
   }
 
-  if (sqlite3_bind_pointer(*stmt, 1, query, "", NULL) != SQLITE_OK) {
+  if (sqlite3_bind_pointer(*stmt, 1, query, "", SQLITE_STATIC) != SQLITE_OK) {
     err = zsql_error_from_sqlite(db, err);
     goto cleanup_stmt;
   }
