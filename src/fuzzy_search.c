@@ -107,12 +107,12 @@ static const float SCORE_GAP_LEADING = -75.f;
 static const float SCORE_GAP_TRAILING = -150.f;
 static const float SCORE_MATCH_CONSECUTIVE = 4500.f;
 
-static inline void fuzzy_rank_row(
-    const int32_t *restrict haystack, const float *restrict match_bonus,
-    size_t haystack_length, const int32_t *restrict needle,
-    size_t needle_length, const float *restrict prev_best_with_match,
-    const float *restrict prev_best, float *restrict cur_best_with_match,
-    float *restrict cur_best, size_t needle_idx) {
+static inline void
+fuzzy_rank_row(const int32_t *haystack, const float *match_bonus,
+               size_t haystack_length, const int32_t *needle,
+               size_t needle_length, const float *prev_best_with_match,
+               const float *prev_best, float *restrict cur_best_with_match,
+               float *restrict cur_best, size_t needle_idx) {
   const float gap_score =
       (needle_idx == needle_length - 1) ? SCORE_GAP_TRAILING : SCORE_GAP_INNER;
 
