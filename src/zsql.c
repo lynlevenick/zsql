@@ -500,7 +500,7 @@ static const char *script =
     "__z_check(){ "
         "while :;do "
             "case \"$1\" in "
-                "-a|-f|-S)"
+                "-*[afS]*)"
                     "return 1;;"
                 "--)"
                     "return 0;;"
