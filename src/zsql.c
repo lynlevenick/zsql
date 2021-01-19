@@ -473,6 +473,7 @@ typedef enum {
 // clang-format off
 static const char *script =
     "if test \"$ZSH_VERSION\";then "
+        // for zsh, use precmd_functions
         "eval '"
             "typeset -ag precmd_functions;"
             "if test \"$precmd_functions[(Ie)__z_add]\" -eq 0;then "
@@ -480,6 +481,7 @@ static const char *script =
             "fi"
         "';"
     "else "
+        // for all other shells, assume PROMPT_COMMAND works
         "case \";${PROMPT_COMMAND:=__z_add};\" in "
             "*\\;__z_add\\;*);;"
             "*)PROMPT_COMMAND=\"${PROMPT_COMMAND:+$PROMPT_COMMAND;}__z_add\";"
@@ -487,10 +489,14 @@ static const char *script =
     "fi\n"
 
     "__z_add()"
+        // run async because we're behind sqlite, fully lockstep
         "(command z -a \"$(pwd)\" &)"
     "\n"
 
     "__z_cd(){ "
+        // when we get a match, we print an extra '$' character after
+        // the match because otherwise the shell would strip trailing
+        // whitespace. strip it back off here
         "if ! CDPATH= cd -- \"${1%?}\" 2>/dev/null;then "
             "printf 'z: could not cd to `%s'\\''\\n' \"${1%?}\";"
             "return 1;"
@@ -498,6 +504,8 @@ static const char *script =
     "}\n"
 
     "__z_check(){ "
+        // emulate the argument checking behavior, returning non-zero
+        // if any non-search action would be taken
         "while :;do "
             "case \"$1\" in "
                 "-*[afS]*)"
