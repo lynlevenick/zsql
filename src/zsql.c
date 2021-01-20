@@ -540,10 +540,12 @@ static const char *script =
 int main(int argc, char **argv) {
   zsql_error *err = NULL;
 
-  // option parsing
+  // initialize globals
 
   ARGC = argc;
   ARGV = argv;
+
+  // option parsing
 
   zsql_behavior behavior = ZSQL_BEHAVIOR_SEARCH;
   zsql_case_sensitivity case_sensitivity = ZSQL_CASE_SMART;
@@ -569,8 +571,7 @@ int main(int argc, char **argv) {
       }
       goto exit;
     case '?':
-      err = zsql_error_from_text("unknown option", err);
-      goto exit;
+      return EXIT_FAILURE;
     }
   }
   if (optind >= argc) {
