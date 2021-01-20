@@ -1,7 +1,6 @@
 #include "error.h"
 
 #include <errno.h>
-#include <inttypes.h>
 #include <sqlite3.h>
 #include <stddef.h>
 #include <stdio.h>
