@@ -22,7 +22,7 @@ typedef struct {
   const utf8proc_option_t utf8proc_options;
 } zsql_query;
 
-#ifdef HAVE_TLS
+#ifdef HAVE_THREAD_LOCAL
 #define MATCH_BUFFER_SIZE 1024
 static thread_local int32_t match_buffer[MATCH_BUFFER_SIZE];
 #endif
@@ -54,7 +54,7 @@ static void match_impl(sqlite3_context *context, int argc,
 
   size_t dir_utf32_length = dir_length * 2;
   int32_t *dir_utf32;
-#ifdef HAVE_TLS
+#ifdef HAVE_THREAD_LOCAL
   if (dir_utf32_length <= MATCH_BUFFER_SIZE) {
     dir_utf32 = match_buffer;
   } else {
@@ -64,7 +64,7 @@ static void match_impl(sqlite3_context *context, int argc,
       sqlite3_result_error_nomem(context);
       goto exit;
     }
-#ifdef HAVE_TLS
+#ifdef HAVE_THREAD_LOCAL
   }
 #endif
 
@@ -77,7 +77,7 @@ retry_decompose:;
     goto cleanup_dir_utf32;
   } else if ((size_t)result > dir_utf32_length) {
     dir_utf32_length = result;
-#ifdef HAVE_TLS
+#ifdef HAVE_THREAD_LOCAL
     if (dir_utf32 == match_buffer) {
       dir_utf32 = malloc(dir_utf32_length * sizeof(*dir_utf32));
       if (dir_utf32 == NULL) {
@@ -93,7 +93,7 @@ retry_decompose:;
         goto cleanup_dir_utf32;
       }
       dir_utf32 = allocation;
-#ifdef HAVE_TLS
+#ifdef HAVE_THREAD_LOCAL
     }
 #endif
     goto retry_decompose;
@@ -121,7 +121,7 @@ retry_decompose:;
     sqlite3_result_null(context);
   }
 
-#ifdef HAVE_TLS
+#ifdef HAVE_THREAD_LOCAL
   if (dir_utf32_length > MATCH_BUFFER_SIZE) {
   cleanup_dir_utf32:
     if (dir_utf32 != match_buffer) {
@@ -129,7 +129,7 @@ retry_decompose:;
 cleanup_dir_utf32:
 #endif
       free(dir_utf32);
-#ifdef HAVE_TLS
+#ifdef HAVE_THREAD_LOCAL
     }
   }
 #endif

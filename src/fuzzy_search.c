@@ -127,7 +127,7 @@ fuzzy_rank_row(const int32_t *haystack, const float *match_bonus,
   }
 }
 
-#ifdef HAVE_TLS
+#ifdef HAVE_THREAD_LOCAL
 #define FUZZY_BUFFER_SIZE 1024
 static thread_local float fuzzy_buffers[5][FUZZY_BUFFER_SIZE];
 #endif
@@ -143,7 +143,7 @@ static zsql_error *fuzzy_rank(float *score, const int32_t *haystack,
   float *cur_best_with_match;
   float *cur_best;
 
-#ifdef HAVE_TLS
+#ifdef HAVE_THREAD_LOCAL
   if (haystack_length <= FUZZY_BUFFER_SIZE) {
     match_bonus = fuzzy_buffers[0];
     prev_best_with_match = fuzzy_buffers[1];
@@ -179,7 +179,7 @@ static zsql_error *fuzzy_rank(float *score, const int32_t *haystack,
       err = zsql_error_from_errno(err);
       goto cleanup_cur_best_with_match;
     }
-#ifdef HAVE_TLS
+#ifdef HAVE_THREAD_LOCAL
   }
 #endif
 
@@ -196,7 +196,7 @@ static zsql_error *fuzzy_rank(float *score, const int32_t *haystack,
 
   *score = prev_best[haystack_length - 1];
 
-#ifdef HAVE_TLS
+#ifdef HAVE_THREAD_LOCAL
   if (haystack_length > FUZZY_BUFFER_SIZE) {
 #endif
   cleanup_cur_best:
@@ -209,7 +209,7 @@ static zsql_error *fuzzy_rank(float *score, const int32_t *haystack,
     free(prev_best_with_match);
   cleanup_match_bonus:
     free(match_bonus);
-#ifdef HAVE_TLS
+#ifdef HAVE_THREAD_LOCAL
   }
 #endif
 exit:

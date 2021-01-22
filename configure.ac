@@ -13,19 +13,9 @@ AC_ARG_ENABLE([tls],
   [use_tls=auto])
 
 AS_IF([test "x$use_tls" != 'xno'],
- [AC_MSG_CHECKING([for thread-local storage support])
-  AC_CACHE_VAL([zsql_cv_tls],
-   [zsql_cv_tls=none
-    for zsql_tls_keyword in _Thread_local __thread '__declspec(thread)'; do
-      AC_COMPILE_IFELSE(
-        [AC_LANG_PROGRAM([], [static $zsql_tls_keyword int var;])],
-        [zsql_cv_tls=$zsql_tls_keyword; break])
-    done])
-  AC_MSG_RESULT([$zsql_cv_tls])
-  AS_IF([test "x$zsql_cv_tls" != 'xnone'],
-   [AC_DEFINE_UNQUOTED([HAVE_TLS], [1])
-    AC_DEFINE_UNQUOTED([thread_local], [$zsql_cv_tls])]
-    [AS_IF([test "x$use_tls" != 'xauto'], [AC_MSG_ERROR([thread-local storage is enabled but not supported])])])])
+ [ZSQL_C_THREAD_LOCAL([],
+   [AS_IF([test "x$use_tls" != 'xauto'],
+     [AC_MSG_ERROR([thread-local storage is enabled but not supported])])])])
 
 AC_CHECK_FUNCS_ONCE([flockfile funlockfile fwrite_unlocked putc_unlocked])
 
