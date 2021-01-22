@@ -77,25 +77,25 @@ retry_decompose:;
     goto cleanup_dir_utf32;
   } else if ((size_t)result > dir_utf32_length) {
     dir_utf32_length = result;
+    void *allocation;
 #ifdef HAVE_THREAD_LOCAL
     if (dir_utf32 == match_buffer) {
-      dir_utf32 = malloc(dir_utf32_length * sizeof(*dir_utf32));
-      if (dir_utf32 == NULL) {
+      allocation = malloc(dir_utf32_length * sizeof(*dir_utf32));
+      if (allocation == NULL) {
         sqlite3_result_error_nomem(context);
         goto exit;
       }
     } else {
 #endif
-      void *allocation =
-          realloc(dir_utf32, dir_utf32_length * sizeof(*dir_utf32));
+      allocation = realloc(dir_utf32, dir_utf32_length * sizeof(*dir_utf32));
       if (allocation == NULL) {
         sqlite3_result_error_nomem(context);
         goto cleanup_dir_utf32;
       }
-      dir_utf32 = allocation;
 #ifdef HAVE_THREAD_LOCAL
     }
 #endif
+    dir_utf32 = allocation;
     goto retry_decompose;
   } else {
     dir_utf32_length = result;
@@ -121,16 +121,12 @@ retry_decompose:;
     sqlite3_result_null(context);
   }
 
-#ifdef HAVE_THREAD_LOCAL
-  if (dir_utf32_length > MATCH_BUFFER_SIZE) {
-  cleanup_dir_utf32:
-    if (dir_utf32 != match_buffer) {
-#else
 cleanup_dir_utf32:
-#endif
-      free(dir_utf32);
 #ifdef HAVE_THREAD_LOCAL
-    }
+  if (dir_utf32 != match_buffer) {
+#endif
+    free(dir_utf32);
+#ifdef HAVE_THREAD_LOCAL
   }
 #endif
 exit:;
@@ -323,14 +319,16 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
                               zsql_query *query) {
   zsql_error *err = NULL;
 
-  if ((err = sqlh_prepare_static(
-           db,
-           "SELECT id,dir,"
-           "m+visits+1000./DENSE_RANK()OVER(ORDER BY visited_at DESC)r"
-           " FROM ("
-           "SELECT *,match(dir,?1)m FROM dirs LIMIT -1"
-           ")WHERE m IS NOT NULL ORDER BY r DESC",
-           stmt)) != NULL) {
+  if ((err =
+           sqlh_prepare_static(db,
+                               "SELECT id,dir,"
+                               "m+1000000./(5001-visits)+500./DENSE_RANK()OVER("
+                               "ORDER BY visited_at DESC"
+                               ")r"
+                               " FROM("
+                               "SELECT *,match(dir,?1)m FROM dirs LIMIT -1"
+                               ")WHERE m IS NOT NULL ORDER BY r DESC",
+                               stmt)) != NULL) {
     goto exit;
   }
 

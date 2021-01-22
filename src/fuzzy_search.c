@@ -64,21 +64,32 @@ static inline int codepoint_is_word(int32_t codepoint, int previous) {
          utfcat == UTF8PROC_CATEGORY_LO || utfcat == UTF8PROC_CATEGORY_ND;
 }
 
-static const float BONUS_BOUNDARY = 6250.f;
+static const float BONUS_SLASH = 4500.f;
+static const float BONUS_BOUNDARY = 4000.f;
+static const float BONUS_PERIOD = 3000.f;
 
 static inline void compute_match_bonus(float *match_bonus,
                                        const int32_t *string, size_t length) {
+  int32_t prev_codepoint = 0;
   int prev_was_word = 0;
 
   for (size_t idx = 0; idx < length; ++idx) {
     int is_word = codepoint_is_word(string[idx], prev_was_word);
-    if (prev_was_word != is_word) {
+
+    if (prev_codepoint == '/') {
+      match_bonus[idx] = BONUS_SLASH;
+    } else if (prev_codepoint == '.') {
+      // This causes the codepoints after periods to have
+      // a lesser bonus than they would have per BONUS_BOUNDARY
+      match_bonus[idx] = BONUS_PERIOD;
+    } else if (prev_was_word != is_word) {
       match_bonus[idx] = BONUS_BOUNDARY;
     } else {
       match_bonus[idx] = 0.f;
     }
 
     prev_was_word = is_word;
+    prev_codepoint = string[idx];
   }
 }
 
@@ -90,10 +101,10 @@ static inline float f32_max(float a, float b) {
   }
 }
 
-static const float SCORE_GAP_INNER = -250.f;
-static const float SCORE_GAP_LEADING = -75.f;
-static const float SCORE_GAP_TRAILING = -150.f;
-static const float SCORE_MATCH_CONSECUTIVE = 4500.f;
+static const float SCORE_GAP_INNER = -200.f;
+static const float SCORE_GAP_LEADING = -50.f;
+static const float SCORE_GAP_TRAILING = -100.f;
+static const float BONUS_CONSECUTIVE = 5000.f;
 
 static inline void
 fuzzy_rank_row(const int32_t *haystack, const float *match_bonus,
@@ -112,9 +123,9 @@ fuzzy_rank_row(const int32_t *haystack, const float *match_bonus,
       if (needle_idx == 0) {
         score = (haystack_idx * SCORE_GAP_LEADING) + match_bonus[haystack_idx];
       } else if (haystack_idx > 0) {
-        score = f32_max(prev_best[haystack_idx - 1] + match_bonus[haystack_idx],
-                        prev_best_with_match[haystack_idx - 1] +
-                            SCORE_MATCH_CONSECUTIVE);
+        score =
+            f32_max(prev_best[haystack_idx - 1] + match_bonus[haystack_idx],
+                    prev_best_with_match[haystack_idx - 1] + BONUS_CONSECUTIVE);
       }
 
       cur_best_with_match[haystack_idx] = score;
