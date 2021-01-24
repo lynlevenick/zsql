@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <utf8proc.h>
 
-#include "args.h"
+#include "env.h"
 #include "error.h"
 #include "fuzzy_search.h"
 #include "migrate.h"
@@ -346,7 +346,7 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
     goto cleanup_stmt;
   }
 
-  if (0 /* DEBUG */) {
+  if (DEBUGGING) {
     for (; status == SQLITE_ROW; status = sqlite3_step(*stmt)) {
       const size_t result_length = (size_t)sqlite3_column_bytes(*stmt, 1);
       const char *result = sqlite3_column_blob(*stmt, 1);
@@ -571,12 +571,8 @@ static const char *script =
 // clang-format on
 
 int main(int argc, char **argv) {
+  zsql_env_init(argc, argv);
   zsql_error *err = NULL;
-
-  // initialize globals
-
-  ARGC = argc;
-  ARGV = argv;
 
   // option parsing
 
