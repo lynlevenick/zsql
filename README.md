@@ -13,4 +13,19 @@ No release tarballs have been published. Autotools is needed to set up the devel
 
 Run `autoreconf --install` to set up the autotools scripts necessary to configure.
 
-Run `./configure && make && sudo make install` to install.
+Run `./configure && make && sudo make install` to install. Afterwards, you will need to add `eval "$(z -S)"` to your `.bashrc` (or equivalent file), which will create the alias around the binary which changes directories.
+
+## Other
+
+Set `ZSQL_DEBUG=1` to debug scoring. For example on my machine,
+
+```
+$ ZSQL_DEBUG=1 z doc
+13195.4946      /home/?/Documents
+12200.3205      /home/?/Documents/Programming
+11800.0800      /home/?/Documents/Programming/C
+11433.5394      /home/?/Documents/Programming/C/zsql
+$
+```
+
+The entry with the highest score is selected.
