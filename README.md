@@ -20,12 +20,12 @@ Run `./configure && make && sudo make install` to install. Afterwards, you will 
 Set `ZSQL_DEBUG=1` to debug scoring. For example on my machine,
 
 ```
-$ ZSQL_DEBUG=1 z doc
+/home/?/Documents/Programming/C/zsql $ ZSQL_DEBUG=1 z doc
 13195.4946      /home/?/Documents
 12200.3205      /home/?/Documents/Programming
 11800.0800      /home/?/Documents/Programming/C
 11433.5394      /home/?/Documents/Programming/C/zsql
-$
+/home/?/Documents $
 ```
 
 The entry with the highest score is selected.
