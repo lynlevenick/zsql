@@ -5,6 +5,6 @@
 
 #include "error.h"
 
-extern zsql_error *zsql_migrate(sqlite3 *db);
+extern zsql_error *zsql_migrate(sqlite3 *conn);
 
 #endif

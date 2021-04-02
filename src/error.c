@@ -21,9 +21,9 @@ zsql_error *zsql_error_from_errno(zsql_error *next) {
   // fixme: not safe under threading
   return zsql_error_from_text(strerror(errno), next);
 }
-zsql_error *zsql_error_from_sqlite(sqlite3 *db, zsql_error *next) {
+zsql_error *zsql_error_from_sqlite(sqlite3 *conn, zsql_error *next) {
   // fixme: not safe under threading
-  const char *msg = sqlite3_errmsg(db);
+  const char *msg = sqlite3_errmsg(conn);
 
   // fixme: this is an inelegant hack around sqlite finalize erroring
   // with the same message that any earlier steps also errored with

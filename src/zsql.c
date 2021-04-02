@@ -174,7 +174,7 @@ static const char *const fallback_suffix = "/.local/share";
 static const char *const cache_dir = "/zsql";
 static const char *const cache_file = "/zsql.db";
 
-static zsql_error *zsql_open(sqlite3 **db) {
+static zsql_error *zsql_open(sqlite3 **conn) {
   zsql_error *err = NULL;
 
   int using_fallback = 0;
@@ -248,35 +248,35 @@ static zsql_error *zsql_open(sqlite3 **db) {
 
   int retries = 0;
 retry_open:;
-  int status = sqlite3_open(path, db);
+  int status = sqlite3_open(path, conn);
   if (status == SQLITE_BUSY && retries < 8) {
     retries += 1;
     sqlite3_sleep(16);
     goto retry_open;
   } else if (status != SQLITE_OK) {
-    err = zsql_error_from_sqlite(*db, err);
+    err = zsql_error_from_sqlite(*conn, err);
     goto cleanup_path;
   }
 
-  if (sqlite3_busy_timeout(*db, 128) != SQLITE_OK) {
-    err = zsql_error_from_sqlite(*db, err);
+  if (sqlite3_busy_timeout(*conn, 128) != SQLITE_OK) {
+    err = zsql_error_from_sqlite(*conn, err);
     goto cleanup_sql;
   }
 
-  if (sqlite3_create_function(*db, "match", 2,
+  if (sqlite3_create_function(*conn, "match", 2,
                               SQLITE_UTF8 | SQLITE_DETERMINISTIC
 #if defined(SQLITE_VERSION_NUMBER) && SQLITE_VERSION_NUMBER >= 3031000
                                   | SQLITE_DIRECTONLY
 #endif
                               ,
                               NULL, match_impl, NULL, NULL) != SQLITE_OK) {
-    err = zsql_error_from_sqlite(*db, err);
+    err = zsql_error_from_sqlite(*conn, err);
     goto cleanup_sql;
   }
 
   if (0) { // error path only
   cleanup_sql:
-    sqlite3_close(*db);
+    sqlite3_close(*conn);
   }
 cleanup_path:
   free(path);
@@ -284,12 +284,12 @@ exit:
   return err;
 }
 
-static zsql_error *zsql_add(sqlite3 *db, const char *dir, size_t length) {
+static zsql_error *zsql_add(sqlite3 *conn, const char *dir, size_t length) {
   zsql_error *err = NULL;
 
   sqlite3_stmt *stmt;
   if ((err = sqlh_prepare_static(
-           db,
+           conn,
            "INSERT INTO dirs(dir,visited_at)VALUES(?1,CURRENT_TIMESTAMP)"
            "ON CONFLICT(dir)DO UPDATE SET"
            " visits=visits+excluded.visits"
@@ -300,12 +300,12 @@ static zsql_error *zsql_add(sqlite3 *db, const char *dir, size_t length) {
 
   if (sqlite3_bind_blob(stmt, 1, dir, length * sizeof(*dir), SQLITE_STATIC) !=
       SQLITE_OK) {
-    err = zsql_error_from_sqlite(db, err);
+    err = zsql_error_from_sqlite(conn, err);
     goto cleanup_stmt;
   }
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
-    err = zsql_error_from_sqlite(db, err);
+    err = zsql_error_from_sqlite(conn, err);
     goto cleanup_stmt;
   }
 
@@ -315,12 +315,12 @@ exit:
   return err;
 }
 
-static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
+static zsql_error *zsql_match(sqlite3 *conn, sqlite3_stmt **stmt,
                               zsql_query *query) {
   zsql_error *err = NULL;
 
   if ((err =
-           sqlh_prepare_static(db,
+           sqlh_prepare_static(conn,
                                "SELECT id,dir,"
                                "m+1000000./(5001-visits)+500./DENSE_RANK()OVER("
                                "ORDER BY visited_at DESC"
@@ -333,7 +333,7 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
   }
 
   if (sqlite3_bind_pointer(*stmt, 1, query, "", SQLITE_STATIC) != SQLITE_OK) {
-    err = zsql_error_from_sqlite(db, err);
+    err = zsql_error_from_sqlite(conn, err);
     goto cleanup_stmt;
   }
 
@@ -342,7 +342,7 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
     err = zsql_error_from_text("no matches", err);
     goto cleanup_stmt;
   } else if (status != SQLITE_ROW) {
-    err = zsql_error_from_sqlite(db, err);
+    err = zsql_error_from_sqlite(conn, err);
     goto cleanup_stmt;
   }
 
@@ -359,7 +359,7 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
     if (status == SQLITE_DONE) {
       status = sqlite3_reset(*stmt);
       if (status != SQLITE_OK) {
-        err = zsql_error_from_sqlite(db, err);
+        err = zsql_error_from_sqlite(conn, err);
         goto cleanup_stmt;
       }
 
@@ -368,11 +368,11 @@ static zsql_error *zsql_match(sqlite3 *db, sqlite3_stmt **stmt,
         err = zsql_error_from_text("inconsistent state after debug", err);
         goto cleanup_stmt;
       } else if (status != SQLITE_ROW) {
-        err = zsql_error_from_sqlite(db, err);
+        err = zsql_error_from_sqlite(conn, err);
         goto cleanup_stmt;
       }
     } else {
-      err = zsql_error_from_sqlite(db, err);
+      err = zsql_error_from_sqlite(conn, err);
       goto cleanup_stmt;
     }
   }
@@ -385,14 +385,15 @@ exit:
   return err;
 }
 
-static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
+static zsql_error *zsql_forget(sqlite3 *conn, const int32_t *runes,
+                               size_t length,
                                utf8proc_option_t utf8proc_options) {
   zsql_error *err = NULL;
 
   zsql_query query = {
       .length = length, .runes = runes, .utf8proc_options = utf8proc_options};
   sqlite3_stmt *stmt;
-  if ((err = zsql_match(db, &stmt, &query)) != NULL) {
+  if ((err = zsql_match(conn, &stmt, &query)) != NULL) {
     goto exit;
   }
 
@@ -418,19 +419,19 @@ static zsql_error *zsql_forget(sqlite3 *db, const int32_t *runes, size_t length,
     if ((err = sqlh_finalize(stmt, err)) != NULL) {
       goto exit;
     }
-    if ((err = sqlh_prepare_static(db, "DELETE FROM dirs WHERE id=?1",
+    if ((err = sqlh_prepare_static(conn, "DELETE FROM dirs WHERE id=?1",
                                    &stmt)) != NULL) {
       goto exit;
     }
 
     if (sqlite3_bind_int64(stmt, 1, id) != SQLITE_OK) {
-      err = zsql_error_from_sqlite(db, err);
+      err = zsql_error_from_sqlite(conn, err);
       goto cleanup_stmt;
     }
 
     int status = sqlite3_step(stmt);
     if (status != SQLITE_DONE) {
-      err = zsql_error_from_sqlite(db, err);
+      err = zsql_error_from_sqlite(conn, err);
       goto cleanup_stmt;
     }
   }
@@ -441,14 +442,15 @@ exit:
   return err;
 }
 
-static zsql_error *zsql_search(sqlite3 *db, const int32_t *runes, size_t length,
+static zsql_error *zsql_search(sqlite3 *conn, const int32_t *runes,
+                               size_t length,
                                utf8proc_option_t utf8proc_options) {
   zsql_error *err = NULL;
 
   zsql_query query = {
       .length = length, .runes = runes, .utf8proc_options = utf8proc_options};
   sqlite3_stmt *stmt;
-  if ((err = zsql_match(db, &stmt, &query)) != NULL) {
+  if ((err = zsql_match(conn, &stmt, &query)) != NULL) {
     goto exit;
   }
 
@@ -621,12 +623,12 @@ int main(int argc, char **argv) {
     goto exit;
   }
 
-  sqlite3 *db;
-  if ((err = zsql_open(&db)) != NULL) {
+  sqlite3 *conn;
+  if ((err = zsql_open(&conn)) != NULL) {
     goto exit;
   }
 
-  if ((err = zsql_migrate(db)) != NULL) {
+  if ((err = zsql_migrate(conn)) != NULL) {
     goto cleanup_sql;
   }
 
@@ -634,7 +636,7 @@ int main(int argc, char **argv) {
 
   switch (behavior) {
   case ZSQL_BEHAVIOR_ADD: {
-    if ((err = zsql_add(db, argv[optind], strlen(argv[optind]))) != NULL) {
+    if ((err = zsql_add(conn, argv[optind], strlen(argv[optind]))) != NULL) {
       goto cleanup_sql;
     }
     break;
@@ -721,12 +723,12 @@ int main(int argc, char **argv) {
     }
 
     if (behavior == ZSQL_BEHAVIOR_FORGET) {
-      if ((err = zsql_forget(db, runes, runes_length, utf8proc_options)) !=
+      if ((err = zsql_forget(conn, runes, runes_length, utf8proc_options)) !=
           NULL) {
         goto cleanup_runes;
       }
     } else if (behavior == ZSQL_BEHAVIOR_SEARCH) {
-      if ((err = zsql_search(db, runes, runes_length, utf8proc_options)) !=
+      if ((err = zsql_search(conn, runes, runes_length, utf8proc_options)) !=
           NULL) {
         goto cleanup_runes;
       }
@@ -744,7 +746,7 @@ int main(int argc, char **argv) {
   }
 
 cleanup_sql:
-  sqlite3_close(db);
+  sqlite3_close(conn);
 exit:
   if (err != NULL) {
     zsql_error_print(err);
