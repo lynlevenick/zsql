@@ -319,16 +319,15 @@ static zsql_error *zsql_match(sqlite3 *conn, sqlite3_stmt **stmt,
                               zsql_query *query) {
   zsql_error *err = NULL;
 
-  if ((err =
-           sqlh_prepare_static(conn,
-                               "SELECT id,dir,"
-                               "m+1000000./(5001-visits)+500./DENSE_RANK()OVER("
-                               "ORDER BY visited_at DESC"
-                               ")r"
-                               " FROM("
-                               "SELECT *,match(dir,?1)m FROM dirs LIMIT -1"
-                               ")WHERE m IS NOT NULL ORDER BY r DESC",
-                               stmt)) != NULL) {
+  if ((err = sqlh_prepare_static(
+           conn,
+           "SELECT id,dir,"
+           "m-250000./(visits+300)+250000./301+500./DENSE_RANK()OVER("
+           "ORDER BY visited_at DESC"
+           ")r,visits FROM("
+           "SELECT *,match(dir,?1)m FROM dirs LIMIT -1"
+           ")WHERE m IS NOT NULL ORDER BY r DESC",
+           stmt)) != NULL) {
     goto exit;
   }
 
@@ -351,8 +350,9 @@ static zsql_error *zsql_match(sqlite3 *conn, sqlite3_stmt **stmt,
       const size_t result_length = (size_t)sqlite3_column_bytes(*stmt, 1);
       const char *result = sqlite3_column_blob(*stmt, 1);
       const double rank = sqlite3_column_double(*stmt, 2);
+      const int64_t visits = sqlite3_column_int64(*stmt, 3);
 
-      fprintf(stderr, "%.4lf\t%.*s\n", rank,
+      fprintf(stderr, "%.4lf\t%lld\t%.*s\n", rank, visits,
               (int)(result_length > INT_MAX ? INT_MAX : result_length), result);
     }
 

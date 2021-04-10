@@ -103,7 +103,7 @@ static inline float f32_max(float a, float b) {
 
 static const float SCORE_GAP_INNER = -200.f;
 static const float SCORE_GAP_LEADING = -50.f;
-static const float SCORE_GAP_TRAILING = -100.f;
+static const float SCORE_GAP_TRAILING = -200.f;
 static const float BONUS_CONSECUTIVE = 5000.f;
 
 static inline void

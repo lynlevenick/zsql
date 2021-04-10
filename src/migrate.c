@@ -87,8 +87,8 @@ exit:
 }
 
 static zsql_error *set_schema_version(sqlite3 *conn, int schema_version) {
-  // 20 chars for pragma, 10 chars for positive schema version, 1 char null
-  char buffer[31];
+  // 20 chars for pragma, 11 chars for schema version, 1 char null
+  char buffer[32];
   const int buffer_length =
       sprintf(buffer, "PRAGMA user_version=%d", schema_version);
   return sqlh_exec(conn, buffer, buffer_length + 1);
