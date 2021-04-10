@@ -352,7 +352,7 @@ static zsql_error *zsql_match(sqlite3 *conn, sqlite3_stmt **stmt,
       const double rank = sqlite3_column_double(*stmt, 2);
       const int64_t visits = sqlite3_column_int64(*stmt, 3);
 
-      fprintf(stderr, "%.4lf\t%lld\t%.*s\n", rank, visits,
+      fprintf(stderr, "%.4lf\t%" PRId64 "\t%.*s\n", rank, visits,
               (int)(result_length > INT_MAX ? INT_MAX : result_length), result);
     }
 
