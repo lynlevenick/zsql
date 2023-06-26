@@ -213,7 +213,6 @@ static zsql_error *zsql_open(sqlite3 **conn) {
     // for the low number of times this will be true, and whether it's true
     // can be statically determined
 #pragma unroll
-#pragma GCC unroll(fallback_suffix_length - 1)
     for (size_t slash_idx = 1; slash_idx < fallback_suffix_length;
          ++slash_idx) {
       if (fallback_suffix[slash_idx] == '/') {
